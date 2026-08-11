@@ -4,9 +4,9 @@
 skills from pinned upstream sources and collection-owned skills. Projects select
 skills through committed bindings; activation is a separate, explicit operation.
 
-This repository is currently at **Checkpoint 2: read-only validation**. It contains
-no CLI, installer, activation tooling, hooks, plugins, MCP servers, or automatic
-update mechanism.
+This repository is currently at **Checkpoint 3: read-only discovery and Activation
+planning**. It contains no mutation commands, installer, activation transaction,
+hooks, plugins, MCP servers, or automatic update mechanism.
 
 ## Design constraints
 
@@ -69,3 +69,24 @@ Run the tests with Python 3.11 or newer:
 ```sh
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
+
+## Read-only commands
+
+The CLI exposes three commands and emits deterministic JSON:
+
+```sh
+PYTHONPATH=src python3 -m skill_collection scan [--collection-root PATH]
+PYTHONPATH=src python3 -m skill_collection validate [--collection-root PATH] [--project-root PATH]
+PYTHONPATH=src python3 -m skill_collection plan [--collection-root PATH] --project-root PATH
+```
+
+`scan` recursively discovers regular `SKILL.md` files without following directory
+symlinks and correlates them exactly by Source and Catalog path. `plan` returns an
+`ActivationPlan` containing only proposed directory and symlink creation actions.
+It includes an in-memory logical Activation Record preview but defines no persisted
+record format and performs no writes.
+
+Each proposed action has an opaque identifier derived from its action kind and
+rooted location. The identifier is stable within CLI schema version 1, but consumers
+must compare it as a whole and must not parse it. The logical record preview's
+`created_directories` exactly matches the locations of proposed directory actions.

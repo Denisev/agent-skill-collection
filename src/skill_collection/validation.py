@@ -11,6 +11,9 @@ from collections.abc import Callable
 from typing import Literal
 from urllib.parse import urlparse
 
+from ._issues import normalize_issues
+from ._resolution import resolve_group, resolve_profile
+
 RootName = Literal["collection", "project"]
 
 
@@ -100,20 +103,7 @@ def validate(
                 issues,
             )
 
-    return _sorted(issues)
-
-
-def _sorted(issues: list[ValidationIssue]) -> list[ValidationIssue]:
-    return sorted(
-        issues,
-        key=lambda issue: (
-            issue.code,
-            issue.location.root,
-            issue.location.relative_path,
-            tuple((item.root, item.relative_path) for item in issue.related_locations),
-            issue.message,
-        ),
-    )
+    return normalize_issues(issues)
 
 
 def _read_toml(
@@ -450,8 +440,11 @@ def _resolve_confined(root: Path, relative_path: str) -> Path | None:
     candidate_path = PurePath(relative_path)
     if candidate_path.is_absolute() or ".." in candidate_path.parts:
         return None
-    resolved_root = root.resolve()
-    resolved_candidate = (root / candidate_path).resolve(strict=False)
+    try:
+        resolved_root = root.resolve()
+        resolved_candidate = (root / candidate_path).resolve(strict=False)
+    except (OSError, RuntimeError):
+        return None
     if not resolved_candidate.is_relative_to(resolved_root):
         return None
     return resolved_candidate
@@ -694,8 +687,22 @@ def _validate_profiles(
                 changed = True
     for name in profile_map:
         if name not in invalid_profiles:
-            _resolve_profile(
-                name, profile_map, groups, skill_ids, issues, indices, invalid_profiles
+            resolve_profile(
+                name,
+                profile_map,
+                groups,
+                skill_ids=skill_ids,
+                invalid_profiles=invalid_profiles,
+                on_missing_removal=lambda profile_name, skill: issues.append(
+                    ValidationIssue(
+                        "skill.remove_missing",
+                        f"Profile removes absent Skill {skill!r}.",
+                        Location(
+                            "collection",
+                            f"profiles.toml#profiles[{indices[profile_name]}]",
+                        ),
+                    )
+                ),
             )
     return profile_map, invalid_profiles
 
@@ -733,69 +740,6 @@ def _report_cycles(
         )
         issues.append(ValidationIssue(code, "Reference cycle detected.", locations[0], locations[1:]))
     return {name for cycle in cycles for name in cycle}
-
-
-def _resolve_group(
-    name: str, groups: dict[str, dict[str, object]], seen: set[str] | None = None
-) -> set[str]:
-    if name not in groups:
-        return set()
-    seen = set() if seen is None else seen
-    if name in seen:
-        return set()
-    seen.add(name)
-    result = set(_names(groups[name].get("skills")))
-    for nested in _names(groups[name].get("groups")):
-        result.update(_resolve_group(nested, groups, seen))
-    return result
-
-
-def _resolve_profile(
-    name: str,
-    profiles: dict[str, dict[str, object]],
-    groups: dict[str, dict[str, object]],
-    skill_ids: set[str],
-    issues: list[ValidationIssue] | None = None,
-    indices: dict[str, int] | None = None,
-    invalid_profiles: set[str] | None = None,
-    resolving: set[str] | None = None,
-) -> set[str]:
-    invalid_profiles = set() if invalid_profiles is None else invalid_profiles
-    if name in invalid_profiles:
-        return set()
-    profile = profiles.get(name)
-    if profile is None:
-        return set()
-    resolving = set() if resolving is None else resolving
-    if name in resolving:
-        return set()
-    resolving = {*resolving, name}
-    result: set[str] = set()
-    for parent in _names(profile.get("inherits")):
-        result.update(
-            _resolve_profile(
-                parent,
-                profiles,
-                groups,
-                skill_ids,
-                invalid_profiles=invalid_profiles,
-                resolving=resolving,
-            )
-        )
-    for group in _names(profile.get("groups")):
-        result.update(_resolve_group(group, groups))
-    result.update(_names(profile.get("skills")))
-    result.update(_names(profile.get("add")))
-    for skill in _names(profile.get("remove")):
-        if skill not in result and issues is not None and indices is not None:
-            issues.append(
-                ValidationIssue(
-                    "skill.remove_missing", f"Profile removes absent Skill {skill!r}.",
-                    Location("collection", f"profiles.toml#profiles[{indices[name]}]")
-                )
-            )
-        result.discard(skill)
-    return result & skill_ids
 
 
 def _validate_project(
@@ -894,6 +838,19 @@ def _validate_project(
             )
         )
         return
+    non_directory_component = _non_directory_target_component(project, target_path)
+    if non_directory_component is not None:
+        issues.append(
+            ValidationIssue(
+                "activation.target_owned",
+                "Binding target contains a project-owned non-directory component.",
+                Location(
+                    "project",
+                    non_directory_component.relative_to(project).as_posix(),
+                ),
+            )
+        )
+        return
     target = project / target_path
     project_resolved = project.resolve()
     if not target.resolve(strict=False).is_relative_to(project_resolved):
@@ -944,11 +901,11 @@ def _validate_project(
         )
         return
     skill_ids = {item["id"] for item in catalog if isinstance(item.get("id"), str)}
-    selected = _resolve_profile(
+    selected = resolve_profile(
         profile_name,
         profiles,
         groups,
-        skill_ids,
+        skill_ids=skill_ids,
         invalid_profiles=invalid_profiles,
     )
     for index, identity in enumerate(_names(binding.get("add"))):
@@ -999,6 +956,19 @@ def _broken_target_component(project: Path, target_path: PurePath) -> Path | Non
                 current.resolve(strict=True)
             except (OSError, RuntimeError):
                 return current
+        if not current.exists():
+            break
+    return None
+
+
+def _non_directory_target_component(
+    project: Path, target_path: PurePath
+) -> Path | None:
+    current = project
+    for component in target_path.parts[:-1]:
+        current = current / component
+        if (current.exists() or current.is_symlink()) and not current.is_dir():
+            return current
         if not current.exists():
             break
     return None

@@ -10,8 +10,16 @@ A named, pinned origin that contributes zero or more Skills to the collection. A
 _Avoid_: Repository, upstream
 
 **Skill**:
-A discoverable agent capability with a stable collection identity and a Codex-facing name. A Skill belongs to exactly one Source.
+A discoverable agent capability with a stable collection identity and a Codex-facing name. A Skill belongs to exactly one Source, and its valid Catalog entry must be backed by exactly one matching Discovery.
 _Avoid_: Package, plugin
+
+**Discovery**:
+The read-only observation of a directory containing `SKILL.md` within a Source. A Discovery is matched to the Catalog by its Source identity and collection-relative directory path.
+_Avoid_: Installation, registration
+
+**Discovered Skill**:
+A Discovery together with its exact Catalog correlation, if one exists. A Discovered Skill without exactly one valid Catalog match is not a Skill.
+_Avoid_: Candidate Skill, scanned Skill
 
 **Group**:
 A named, reusable set of Skill and Group references representing a capability area. A Group cannot contain itself, directly or transitively.
@@ -32,6 +40,10 @@ _Avoid_: Registry, manifest
 **Activation**:
 The explicit application of a validated plan that exposes selected Skills to one project through collection-owned symlinks. Activation does not copy Skill contents or change global Skills.
 _Avoid_: Installation, deployment
+
+**Activation Plan**:
+A deterministic, read-only description of the project-local directories and Skill links that Activation would require. A blocked Activation Plan contains issues and no proposed actions.
+_Avoid_: Plan, transaction
 
 **Collision**:
 A condition in which two selected Skills claim the same Codex-facing name or an activation target is already project-owned. A Collision prevents activation until resolved.
