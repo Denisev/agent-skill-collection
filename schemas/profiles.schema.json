@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-skill-collection.local/schemas/profiles.schema.json",
+  "title": "Agent Skill Collection Profiles",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "profiles"],
+  "properties": {
+    "version": { "const": 1 },
+    "profiles": { "type": "array", "items": { "$ref": "#/$defs/profile" } }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "names": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
+    "profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "description": { "type": "string", "minLength": 1 },
+        "inherits": { "$ref": "#/$defs/names" },
+        "groups": { "$ref": "#/$defs/names" },
+        "skills": { "$ref": "#/$defs/names" },
+        "add": { "$ref": "#/$defs/names" },
+        "remove": { "$ref": "#/$defs/names" }
+      },
+      "anyOf": [
+        { "required": ["inherits"] },
+        { "required": ["groups"] },
+        { "required": ["skills"] },
+        { "required": ["add"] }
+      ]
+    }
+  }
+}

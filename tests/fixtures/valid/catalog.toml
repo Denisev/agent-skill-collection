@@ -1,0 +1,16 @@
+version = 1
+collection_revision = "0000000000000000000000000000000000000000"
+
+[[skills]]
+id = "alpha"
+name = "alpha"
+source = "collection"
+path = "skills/alpha"
+content_hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+[[skills]]
+id = "beta"
+name = "beta"
+source = "collection"
+path = "skills/beta"
+content_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"

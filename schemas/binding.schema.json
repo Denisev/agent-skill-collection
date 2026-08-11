@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-skill-collection.local/schemas/binding.schema.json",
+  "title": "Agent Skill Collection Project Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "collection", "profile"],
+  "properties": {
+    "version": { "const": 1 },
+    "collection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["url", "revision"],
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" }
+      }
+    },
+    "profile": { "$ref": "#/$defs/name" },
+    "add": { "$ref": "#/$defs/names" },
+    "remove": { "$ref": "#/$defs/names" },
+    "target": { "type": "string", "minLength": 1, "default": ".agents/skills" }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "names": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true }
+  }
+}

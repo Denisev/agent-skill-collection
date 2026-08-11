@@ -1,0 +1,9 @@
+version = 1
+
+[[profiles]]
+name = "one"
+inherits = ["two"]
+
+[[profiles]]
+name = "two"
+inherits = ["one"]

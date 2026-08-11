@@ -1,0 +1,6 @@
+version = 1
+
+[[sources]]
+id = "collection"
+kind = "collection"
+path = "skills"

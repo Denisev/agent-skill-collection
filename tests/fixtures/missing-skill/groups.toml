@@ -1,0 +1,5 @@
+version = 1
+
+[[groups]]
+name = "broken"
+skills = ["absent"]

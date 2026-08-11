@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-skill-collection.local/schemas/sources.schema.json",
+  "title": "Agent Skill Collection Sources",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "sources"],
+  "properties": {
+    "version": { "const": 1 },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/source" }
+    }
+  },
+  "$defs": {
+    "identifier": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "path"],
+      "properties": {
+        "id": { "$ref": "#/$defs/identifier" },
+        "kind": { "enum": ["git-submodule", "collection"] },
+        "path": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "format": "uri" },
+        "skills_root": { "type": "string", "minLength": 1, "default": "." }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "kind": { "const": "git-submodule" } } },
+          "then": { "required": ["url"] },
+          "else": { "not": { "required": ["url"] } }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+version = 1
+
+[[profiles]]
+name = "base"
+groups = ["core"]
+
+[[profiles]]
+name = "default"
+inherits = ["base"]
+groups = ["nested"]
+add = ["beta"]
+remove = ["alpha"]

@@ -1,0 +1,10 @@
+version = 1
+
+[[groups]]
+name = "core"
+skills = ["alpha"]
+
+[[groups]]
+name = "nested"
+groups = ["core"]
+skills = ["beta"]

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-skill-collection.local/schemas/groups.schema.json",
+  "title": "Agent Skill Collection Groups",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "groups"],
+  "properties": {
+    "version": { "const": 1 },
+    "groups": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/group" }
+    }
+  },
+  "$defs": {
+    "name": { "type": "string", "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$" },
+    "group": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name"],
+      "properties": {
+        "name": { "$ref": "#/$defs/name" },
+        "description": { "type": "string", "minLength": 1 },
+        "skills": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/name" }, "uniqueItems": true }
+      },
+      "anyOf": [
+        { "required": ["skills"] },
+        { "required": ["groups"] }
+      ]
+    }
+  }
+}

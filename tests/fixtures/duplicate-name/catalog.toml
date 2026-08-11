@@ -1,0 +1,16 @@
+version = 1
+collection_revision = "0000000000000000000000000000000000000000"
+
+[[skills]]
+id = "first"
+name = "shared"
+source = "one"
+path = "one"
+content_hash = "sha256:0000000000000000000000000000000000000000000000000000000000000000"
+
+[[skills]]
+id = "second"
+name = "shared"
+source = "two"
+path = "two"
+content_hash = "sha256:1111111111111111111111111111111111111111111111111111111111111111"

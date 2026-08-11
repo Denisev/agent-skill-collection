@@ -1,0 +1,9 @@
+version = 1
+
+[[groups]]
+name = "one"
+groups = ["two"]
+
+[[groups]]
+name = "two"
+groups = ["one"]

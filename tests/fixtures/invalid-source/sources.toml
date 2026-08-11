@@ -1,0 +1,5 @@
+version = 1
+
+[[sources]]
+id = "upstream"
+kind = "git-submodule"
