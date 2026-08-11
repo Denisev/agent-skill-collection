@@ -1,0 +1,78 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://agent-skill-collection.local/schemas/activation-record.schema.json",
+  "title": "Agent Skill Collection Activation Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "activation_id",
+    "applied_plan_id",
+    "binding_digest",
+    "collection_revision",
+    "profile",
+    "created_directories",
+    "binding",
+    "managed_links"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "activation_id": { "$ref": "#/$defs/digest" },
+    "applied_plan_id": { "$ref": "#/$defs/digest" },
+    "binding_digest": { "$ref": "#/$defs/digest" },
+    "collection_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "profile": { "$ref": "#/$defs/name" },
+    "created_directories": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/relativePath" },
+      "uniqueItems": true
+    },
+    "binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["root", "path"],
+      "properties": {
+        "root": { "const": "project" },
+        "path": { "const": "skill-collection.toml" }
+      }
+    },
+    "managed_links": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "location_root",
+          "location_path",
+          "target_root",
+          "target_path"
+        ],
+        "properties": {
+          "location_root": { "const": "project" },
+          "location_path": { "$ref": "#/$defs/relativePath" },
+          "target_root": { "const": "collection" },
+          "target_path": { "$ref": "#/$defs/relativePath" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^(?!/)(?!.*\\\\)(?!.*(?:^|/)\\.\\.(?:/|$))[^\\u0000]+$"
+    }
+  }
+}

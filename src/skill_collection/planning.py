@@ -60,11 +60,20 @@ class ActivationPlan:
 def plan_activation(
     collection_root: str | Path, project_root: str | Path
 ) -> ActivationPlan:
+    return _plan_activation(collection_root, project_root, allow_activation_record=False)
+
+
+def _plan_activation(
+    collection_root: str | Path,
+    project_root: str | Path,
+    *,
+    allow_activation_record: bool,
+) -> ActivationPlan:
     collection = Path(collection_root)
     project = Path(project_root)
     scan_result = scan(collection)
     issues = list(validate(collection, project)) + list(scan_result.issues)
-    record_issue = _activation_record_issue(project)
+    record_issue = None if allow_activation_record else _activation_record_issue(project)
     if record_issue is not None:
         issues.append(record_issue)
     issues = normalize_issues(issues)

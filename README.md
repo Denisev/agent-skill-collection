@@ -5,7 +5,8 @@ skills from pinned upstream sources and collection-owned skills. Projects select
 skills through committed bindings; activation is a separate, explicit operation.
 
 This repository is currently at **Checkpoint 3: read-only discovery and Activation
-planning**. It contains no mutation commands, installer, activation transaction,
+planning**, with a read-only Checkpoint 4A Activation review contract. It contains
+no mutation commands, installer, activation transaction,
 hooks, plugins, MCP servers, or automatic update mechanism.
 
 ## Design constraints
@@ -85,6 +86,13 @@ symlinks and correlates them exactly by Source and Catalog path. `plan` returns 
 `ActivationPlan` containing only proposed directory and symlink creation actions.
 It includes an in-memory logical Activation Record preview but defines no persisted
 record format and performs no writes.
+
+`prepare_activation(collection_root, project_root)` adds a read-only ownership
+review. It distinguishes initial, repeated, and repair intent, produces separate
+durable `activation_id` and current-state `plan_id` values, and previews a canonical
+project-local Activation Record. Existing records must match the version 1 schema
+and canonical TOML bytes exactly. Checkpoint 4A does not apply the review or write
+the record.
 
 Each proposed action has an opaque identifier derived from its action kind and
 rooted location. The identifier is stable within CLI schema version 1, but consumers

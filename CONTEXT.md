@@ -45,6 +45,10 @@ _Avoid_: Installation, deployment
 A deterministic, read-only description of the project-local directories and Skill links that Activation would require. A blocked Activation Plan contains issues and no proposed actions.
 _Avoid_: Plan, transaction
 
+**Activation Record**:
+A canonical project-local document that durably records the rooted paths, object types, and Skill targets owned by one Activation. It carries a stable activation identity; it does not authorize mutation by itself.
+_Avoid_: Lock file, transaction journal
+
 **Collision**:
 A condition in which two selected Skills claim the same Codex-facing name or an activation target is already project-owned. A Collision prevents activation until resolved.
 _Avoid_: Duplicate

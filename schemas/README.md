@@ -10,6 +10,7 @@ parsing. They intentionally do not prescribe filenames or implement validation.
 | Profiles | `profiles.schema.json` | authored |
 | Binding | `binding.schema.json` | project-authored |
 | Catalog | `catalog.schema.json` | generated |
+| Activation Record | `activation-record.schema.json` | generated project-local state |
 
 ## Cross-document invariants
 
