@@ -14,9 +14,12 @@ def json_document(command: str, result: object) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
 
 
-def error_document(code: str, message: str) -> str:
+def error_document(code: str, message: str, *, cleanup: object | None = None) -> str:
+    payload = {"error": {"code": code, "message": message}, "schema_version": 1}
+    if cleanup is not None:
+        payload["cleanup"] = _value(cleanup)
     return json.dumps(
-        {"error": {"code": code, "message": message}, "schema_version": 1},
+        payload,
         ensure_ascii=False,
         indent=2,
         sort_keys=True,

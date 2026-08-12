@@ -7,6 +7,8 @@ from typing import TextIO
 
 from .output import error_document, json_document
 from .planning import plan_activation
+from .activation import prepare_activation
+from ._activation_transaction import apply_activation
 from .scanning import scan
 from .validation import validate
 
@@ -42,22 +44,49 @@ def main(
             issues = tuple(validate(collection, project))
             result = {"issues": issues}
             exit_code = 1 if issues else 0
-        else:
+        elif arguments.command == "plan":
             project = _absolute(arguments.project_root)
             result = plan_activation(collection, project)
             exit_code = 1 if result.status == "blocked" else 0
+        else:
+            project = _absolute(arguments.project_root)
+            if arguments.apply and arguments.plan_id is None:
+                raise _UsageError(parser, "--plan-id is required with --apply")
+            if not arguments.apply and arguments.plan_id is not None:
+                raise _UsageError(parser, "--plan-id requires --apply")
+            result = (
+                apply_activation(collection, project, arguments.plan_id)
+                if arguments.apply
+                else prepare_activation(collection, project)
+            )
+            exit_code = 1 if result.status in ("blocked", "failed") else 0
         stdout.write(json_document(arguments.command, result))
         return exit_code
     except _UsageError as error:
         error.parser.print_usage(file=stderr)
         stderr.write(f"{error.parser.prog}: error: {error.message}\n")
         return 2
-    except KeyboardInterrupt:
+    except KeyboardInterrupt as error:
+        cleanup = getattr(error, "activation_cleanup_report", None)
+        if cleanup is not None and (cleanup.remaining_objects or cleanup.issues):
+            stderr.write(
+                error_document(
+                    "system.interrupted", "Activation was interrupted.", cleanup=cleanup
+                )
+            )
         return 130
-    except Exception:
+    except Exception as error:
+        cleanup = getattr(error, "activation_cleanup_report", None)
         stderr.write(
             error_document(
-                "system.unexpected", "An unexpected system failure occurred."
+                "system.unexpected",
+                "An unexpected system failure occurred.",
+                cleanup=(
+                    cleanup
+                    if cleanup is not None
+                    and (cleanup.remaining_objects or cleanup.issues)
+                    else None
+                ),
             )
         )
         return 3
@@ -81,6 +110,11 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("plan")
     _collection_flag(plan_parser)
     plan_parser.add_argument("--project-root", required=True)
+    activate_parser = subparsers.add_parser("activate")
+    _collection_flag(activate_parser)
+    activate_parser.add_argument("--project-root", required=True)
+    activate_parser.add_argument("--apply", action="store_true")
+    activate_parser.add_argument("--plan-id")
     return parser
 
 

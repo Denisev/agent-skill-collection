@@ -195,7 +195,13 @@ class ActivationReviewPublicSeamTests(unittest.TestCase):
         )
         self.assertEqual(
             [action.location.relative_path for action in first.actions],
-            [".agents", ".agents/skills", ".agents/skills/alpha"],
+            [
+                ".agent-skill-collection",
+                ".agents",
+                ".agents/skills",
+                ".agents/skills/alpha",
+                ".agent-skill-collection/activation.toml",
+            ],
         )
         binding_state = next(
             item

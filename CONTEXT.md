@@ -41,6 +41,14 @@ _Avoid_: Registry, manifest
 The explicit application of a validated plan that exposes selected Skills to one project through collection-owned symlinks. Activation does not copy Skill contents or change global Skills.
 _Avoid_: Installation, deployment
 
+**Activation Result**:
+The immutable outcome of one apply request: applied, unchanged, blocked, or failed. Its creation fields are an invocation history; a Cleanup Report separately states what remained after failure cleanup.
+_Avoid_: Transaction log, installation result
+
+**Cleanup Report**:
+The deterministic account of best-effort removal performed after a failed invocation. It is not durable ownership proof and is not a Rollback.
+_Avoid_: Rollback, repair record
+
 **Activation Plan**:
 A deterministic, read-only description of the project-local directories and Skill links that Activation would require. A blocked Activation Plan contains issues and no proposed actions.
 _Avoid_: Plan, transaction

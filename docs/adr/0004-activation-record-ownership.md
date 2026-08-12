@@ -44,13 +44,15 @@ The stable `activation_id` identifies durable intent and ownership. The stored
 A current review receives a separate `plan_id` covering its mode, actions, and
 filesystem preconditions.
 
-Checkpoint 4A reads and reviews records but never writes or repairs them.
+Checkpoint 4A established read-only review. Checkpoint 4B may publish the initial
+record with exclusive, no-overwrite creation after its current plan is revalidated.
 
 ## Consequences
 
 Records must pass schema, semantic, containment, and byte-for-byte canonical checks.
-Different formatting is rejected rather than normalized. Mutation, no-overwrite
-publication, and same-invocation cleanup remain deferred to Checkpoint 4B.
+Different formatting is rejected rather than normalized. A later invocation never
+uses an incomplete prior invocation as ownership proof: only the canonical final
+Activation Record does so.
 
 Because records are trusted local state, copying a valid record into another project
 with identical intent and matching filesystem objects transfers its ownership

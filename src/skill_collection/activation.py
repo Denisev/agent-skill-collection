@@ -70,11 +70,56 @@ class ActivationReview:
     mode: ActivationMode | None
     activation_id: str | None
     plan_id: str | None
-    actions: tuple[ProposedAction, ...]
+    actions: tuple[ActivationAction, ...]
     unchanged_links: tuple[ManagedLink, ...]
     filesystem_preconditions: tuple[FilesystemPrecondition, ...]
     proposed_activation_record: ActivationRecord | None
     blocking_issues: tuple[ValidationIssue, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class CreateActivationStateDirectoryAction:
+    action_id: str
+    kind: Literal["create-activation-state-directory"]
+    location: Location
+    precondition: Literal["absent"]
+
+
+@dataclass(frozen=True, slots=True)
+class WriteActivationRecordAction:
+    action_id: str
+    kind: Literal["write-activation-record"]
+    location: Location
+    precondition: Literal["absent"]
+    content_sha256: str
+
+
+ActivationAction = (
+    ProposedAction | CreateActivationStateDirectoryAction | WriteActivationRecordAction
+)
+
+
+@dataclass(frozen=True, slots=True)
+class CleanupReport:
+    attempted: bool
+    removed_record: bool
+    removed_links: tuple[Location, ...]
+    removed_directories: tuple[Location, ...]
+    remaining_objects: tuple[Location, ...]
+    issues: tuple[ValidationIssue, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ActivationResult:
+    status: Literal["applied", "unchanged", "blocked", "failed"]
+    mode: ActivationMode | None
+    activation_id: str | None
+    plan_id: str | None
+    created_directories: tuple[Location, ...]
+    created_links: tuple[Location, ...]
+    record_location: Location | None
+    issues: tuple[ValidationIssue, ...]
+    cleanup: CleanupReport | None
 
 
 def prepare_activation(
@@ -187,8 +232,25 @@ def prepare_activation(
         )
         if unowned_directory_issues:
             return _blocked_review(unowned_directory_issues)
+    state_action: tuple[ActivationAction, ...] = (
+        (
+            CreateActivationStateDirectoryAction(
+                _apply_action_id(
+                    "create-activation-state-directory",
+                    Location("project", ".agent-skill-collection"),
+                ),
+                "create-activation-state-directory",
+                Location("project", ".agent-skill-collection"),
+                "absent",
+            ),
+        )
+        if existing_record is None
+        and not (project / ".agent-skill-collection").exists()
+        else ()
+    )
+    actions_without_record: tuple[ActivationAction, ...] = state_action + plan.actions
     preconditions = _initial_preconditions(
-        collection, project, plan.actions, managed_links, created_directories
+        collection, project, actions_without_record, managed_links, created_directories
     )
     unchanged = tuple(
         link
@@ -202,7 +264,20 @@ def prepare_activation(
         "activation_review_version": 1,
         "activation_id": activation_id,
         "mode": mode,
-        "actions": [_action_payload(action) for action in plan.actions],
+        "actions": [_action_payload(action) for action in actions_without_record]
+        + (
+            [
+                {
+                    "kind": "write-activation-record",
+                    "location": _location_payload(
+                        Location("project", ".agent-skill-collection/activation.toml")
+                    ),
+                    "precondition": "absent",
+                }
+            ]
+            if existing_record is None
+            else []
+        ),
         "unchanged_links": [
             {
                 "location": _location_payload(link.location),
@@ -226,12 +301,27 @@ def prepare_activation(
             managed_links=managed_links,
             created_directories=created_directories,
         )
+    record_action: tuple[ActivationAction, ...] = ()
+    if existing_record is None:
+        record_bytes = serialize_activation_record(record)
+        record_action = (
+            WriteActivationRecordAction(
+                _apply_action_id(
+                    "write-activation-record",
+                    Location("project", ".agent-skill-collection/activation.toml"),
+                ),
+                "write-activation-record",
+                Location("project", ".agent-skill-collection/activation.toml"),
+                "absent",
+                hashlib.sha256(record_bytes).hexdigest(),
+            ),
+        )
     return ActivationReview(
         "ready",
         mode,
         activation_id,
         plan_id,
-        plan.actions,
+        actions_without_record + record_action,
         unchanged,
         preconditions,
         record,
@@ -465,6 +555,11 @@ def _action_payload(action: ProposedAction) -> dict[str, object]:
     if target is not None:
         payload["target"] = _location_payload(target)
     return payload
+
+
+def _apply_action_id(kind: str, location: Location) -> str:
+    material = f"cli-schema-v1\0{kind}\0{location.root}\0{location.relative_path}"
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def _initial_preconditions(

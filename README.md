@@ -4,9 +4,9 @@
 skills from pinned upstream sources and collection-owned skills. Projects select
 skills through committed bindings; activation is a separate, explicit operation.
 
-This repository is currently at **Checkpoint 3: read-only discovery and Activation
-planning**, with a read-only Checkpoint 4A Activation review contract. It contains
-no mutation commands, installer, activation transaction,
+This repository is currently at **Checkpoint 4B: safe project Activation**. It can
+apply an explicitly selected, freshly revalidated Activation Review inside one
+project. It contains no deactivation, installer, Source update, global mutation,
 hooks, plugins, MCP servers, or automatic update mechanism.
 
 ## Design constraints
@@ -18,7 +18,7 @@ hooks, plugins, MCP servers, or automatic update mechanism.
 - Project Bindings select a Profile and may add or remove skills.
 - A generated Catalog will describe the resolved, uniquely named skill inventory.
 - Planning and validation must precede explicit activation.
-- Future mutation commands will be dry-run by default and require `--apply`.
+- Activation is dry-run by default and requires both `--apply` and `--plan-id`.
 - Only the future Router may be installed globally.
 - Project activation will use generated, uncommitted symlinks.
 - Distribution is plain Git; runtime tooling will use Python 3.11's standard library.
@@ -47,8 +47,9 @@ validation and are specified in [schemas/README.md](schemas/README.md).
 
 ## Current boundaries
 
-At this checkpoint, nothing in this repository may install, activate, link, update,
-or modify global or project skills. The pre-install archive at
+At this checkpoint, only an approved project-local Activation Plan may create
+container directories, managed skill symlinks, and one canonical Activation Record.
+Nothing may deactivate, update Sources, or modify global skills. The pre-install archive at
 `/Users/admin/Documents/codex_projects/bystro/.skill-vault` remains outside this
 repository and must remain untouched until migration is explicitly approved.
 
@@ -79,6 +80,8 @@ The CLI exposes three commands and emits deterministic JSON:
 PYTHONPATH=src python3 -m skill_collection scan [--collection-root PATH]
 PYTHONPATH=src python3 -m skill_collection validate [--collection-root PATH] [--project-root PATH]
 PYTHONPATH=src python3 -m skill_collection plan [--collection-root PATH] --project-root PATH
+PYTHONPATH=src python3 -m skill_collection activate [--collection-root PATH] --project-root PATH
+PYTHONPATH=src python3 -m skill_collection activate [--collection-root PATH] --project-root PATH --apply --plan-id ID
 ```
 
 `scan` recursively discovers regular `SKILL.md` files without following directory
@@ -91,8 +94,13 @@ record format and performs no writes.
 review. It distinguishes initial, repeated, and repair intent, produces separate
 durable `activation_id` and current-state `plan_id` values, and previews a canonical
 project-local Activation Record. Existing records must match the version 1 schema
-and canonical TOML bytes exactly. Checkpoint 4A does not apply the review or write
-the record.
+and canonical TOML bytes exactly.
+
+`apply_activation(collection_root, project_root, plan_id)` and `activate --apply`
+apply only a matching current review. Creation uses descriptor-relative,
+non-following filesystem operations, exclusive creation, mandatory directory
+`fsync`, and no-overwrite record publication. Failures attempt cleanup of only the
+objects created by that invocation; later runs never remove unproven leftovers.
 
 Each proposed action has an opaque identifier derived from its action kind and
 rooted location. The identifier is stable within CLI schema version 1, but consumers
