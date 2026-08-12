@@ -5,6 +5,7 @@ import json
 from typing import Any
 
 from .inspection import DoctorReport, GuidedIssue, ProjectStatus, RecommendedCommand
+from .initialization import InitializationPlan
 
 
 def json_document(command: str, result: object) -> str:
@@ -38,9 +39,58 @@ def _value(value: object) -> Any:
     return value
 
 
-def inspection_text(result: ProjectStatus | DoctorReport) -> str:
-    lines = _doctor_lines(result) if isinstance(result, DoctorReport) else _status_lines(result)
+def inspection_text(result: ProjectStatus | DoctorReport | InitializationPlan) -> str:
+    if isinstance(result, InitializationPlan):
+        lines = _initialization_lines(result)
+    else:
+        lines = _doctor_lines(result) if isinstance(result, DoctorReport) else _status_lines(result)
     return "\n".join(lines) + "\n"
+
+
+def _initialization_lines(result: InitializationPlan) -> list[str]:
+    lines = [
+        f"Project initialization: {result.status}",
+        f"Profile: {result.profile or '-'}",
+        f"Collection revision: {result.collection_revision or '-'}",
+        f"Collection URL: {result.collection_url or '-'}",
+        "Binding: project:skill-collection.toml",
+        f"Binding state: {result.binding_observation.kind}",
+        f"Binding digest: {result.binding_digest or '-'}",
+        f"Plan ID: {result.plan_id or '-'}",
+        "",
+        f"Proposed actions ({len(result.actions)}):",
+    ]
+    if result.actions:
+        for index, action in enumerate(result.actions, 1):
+            lines.extend([
+                f"{index}. [{action.kind}] {action.location.root}:{_escape(action.location.relative_path)}",
+                f"   Precondition: {action.precondition}",
+                f"   Content SHA-256: {action.content_sha256}",
+                f"   Action ID: {action.action_id}",
+            ])
+    else:
+        lines.append("None.")
+    lines.extend(["", "Binding content:"])
+    if result.binding_content is None:
+        lines.append("None.")
+    else:
+        lines.extend(f"  {line}" for line in result.binding_content.removesuffix("\n").split("\n"))
+    lines.extend(["", f"Issues ({len(result.blocking_issues)}):"])
+    if not result.blocking_issues:
+        lines.append("None.")
+    else:
+        for index, issue in enumerate(result.blocking_issues, 1):
+            lines.extend([
+                f"{index}. [{_escape(issue.code)}] {_escape(issue.message)}",
+                f"   Location: {issue.location.root}:{_escape(issue.location.relative_path)}",
+            ])
+            if issue.related_locations:
+                related = ", ".join(
+                    f"{item.root}:{_escape(item.relative_path)}"
+                    for item in issue.related_locations
+                )
+                lines.append(f"   Related: {related}")
+    return lines
 
 
 def _status_lines(result: ProjectStatus, *, nested: bool = False) -> list[str]:

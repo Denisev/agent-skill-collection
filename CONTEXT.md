@@ -33,6 +33,18 @@ _Avoid_: Preset, environment
 A project-owned declaration selecting one Profile and optionally adding or removing Skills. A Binding is portable and records intent, not generated filesystem state.
 _Avoid_: Installation, lock file
 
+**Collection URL**:
+The canonical, portable network location committed in the Catalog for identifying the collection in a Binding. It is a locator, not a local Git remote, checkout path, credential source, or reachability claim.
+_Avoid_: Origin URL, checkout URL
+
+**Project Initialization**:
+The deliberate creation of the first project Binding for one validated collection revision and Profile. It establishes project intent and does not activate Skills.
+_Avoid_: Installation, Activation
+
+**Initialization Plan**:
+An immutable, deterministic, read-only description of the one Binding creation that Project Initialization would require. A blocked Initialization Plan contains issues and no proposed action or Binding preview.
+_Avoid_: Activation Plan, transaction
+
 **Catalog**:
 The generated inventory of resolved Skills and their provenance, paths, and Codex-facing names at a specific collection state. It is derived data and is not hand edited.
 _Avoid_: Registry, manifest

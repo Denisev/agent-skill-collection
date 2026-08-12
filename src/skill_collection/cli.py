@@ -12,6 +12,7 @@ from ._activation_transaction import apply_activation
 from .scanning import scan
 from .validation import validate
 from .inspection import doctor, status
+from .initialization import plan_project_initialization
 
 
 class _UsageError(Exception):
@@ -57,6 +58,10 @@ def main(
             project = _absolute(arguments.project_root)
             result = doctor(collection, project)
             exit_code = 0 if result.category == "ok" else 1
+        elif arguments.command == "init-project":
+            project = _absolute(arguments.project_root)
+            result = plan_project_initialization(collection, project, arguments.profile)
+            exit_code = 1 if result.status == "blocked" else 0
         else:
             project = _absolute(arguments.project_root)
             if arguments.apply and arguments.plan_id is None:
@@ -120,6 +125,11 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("plan")
     _collection_flag(plan_parser)
     plan_parser.add_argument("--project-root", required=True)
+    initialization_parser = subparsers.add_parser("init-project")
+    _collection_flag(initialization_parser)
+    initialization_parser.add_argument("--project-root", required=True)
+    initialization_parser.add_argument("--profile", required=True)
+    initialization_parser.add_argument("--format", choices=("json", "text"), default="json")
     for command in ("status", "doctor"):
         inspection_parser = subparsers.add_parser(command)
         _collection_flag(inspection_parser)

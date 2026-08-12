@@ -4,12 +4,13 @@
 skills from pinned upstream sources and collection-owned skills. Projects select
 skills through committed bindings; activation is a separate, explicit operation.
 
-This repository is currently at **Checkpoint 5: read-only project inspection**. It
-can inspect project state and platform Activation capabilities in deterministic
-JSON or human-readable text, and can apply an explicitly selected, freshly
-revalidated Activation Review inside one project. It contains no deactivation,
-installer, Source update, global mutation, hooks, plugins, MCP servers, or automatic
-update mechanism.
+This repository is currently at **Checkpoint 6A: read-only project initialization
+planning**. It can preview the exact canonical Binding for a committed Collection
+URL, validated collection revision, and Profile without creating it. It also
+retains deterministic project inspection and explicit, freshly revalidated
+Activation. It contains no initialization apply mode, deactivation, installer,
+Source update, global mutation, hooks, plugins, MCP servers, or automatic update
+mechanism.
 
 ## Design constraints
 
@@ -76,7 +77,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 ## Read-only commands
 
-The CLI exposes three commands and emits deterministic JSON:
+The CLI exposes deterministic read-only and Activation commands:
 
 ```sh
 PYTHONPATH=src python3 -m skill_collection scan [--collection-root PATH]
@@ -86,7 +87,11 @@ PYTHONPATH=src python3 -m skill_collection activate [--collection-root PATH] --p
 PYTHONPATH=src python3 -m skill_collection activate [--collection-root PATH] --project-root PATH --apply --plan-id ID
 PYTHONPATH=src python3 -m skill_collection status [--collection-root PATH] --project-root PATH [--format json|text]
 PYTHONPATH=src python3 -m skill_collection doctor [--collection-root PATH] --project-root PATH [--format json|text]
+PYTHONPATH=src python3 -m skill_collection init-project [--collection-root PATH] --project-root PATH --profile PROFILE [--format json|text]
 ```
+
+`init-project` is read-only and dry-run only. It blocks when
+`skill-collection.toml` exists in any form and has no `--apply` option.
 
 `status` maps the existing Activation Review to `blocked`, `inactive`, `active`, or
 `drifted`. `doctor` adds non-mutating inspection of the platform capabilities used

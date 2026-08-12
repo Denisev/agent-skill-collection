@@ -12,6 +12,10 @@ parsing. They intentionally do not prescribe filenames or implement validation.
 | Catalog | `catalog.schema.json` | generated |
 | Activation Record | `activation-record.schema.json` | generated project-local state |
 
+Catalog schema version 1 permits optional `collection_url` metadata. Existing
+Catalogs without it remain valid for established seams; read-only Project
+Initialization requires it to produce a portable Binding.
+
 ## Cross-document invariants
 
 JSON Schema alone cannot express all collection rules. Future validation must also

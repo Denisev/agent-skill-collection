@@ -39,6 +39,14 @@ from .inspection import (
     status,
     doctor,
 )
+from .initialization import (
+    BindingDestinationObservation,
+    CreateBindingAction,
+    InitializationPlan,
+    InitializationStatus,
+    ProposedInitializationAction,
+    plan_project_initialization,
+)
 
 __all__ = [
     "ActivationPlan",
@@ -70,6 +78,11 @@ __all__ = [
     "ProjectStatus",
     "RecommendedCommand",
     "StatusCategory",
+    "BindingDestinationObservation",
+    "CreateBindingAction",
+    "InitializationPlan",
+    "InitializationStatus",
+    "ProposedInitializationAction",
     "plan_activation",
     "apply_activation",
     "prepare_activation",
@@ -78,4 +91,5 @@ __all__ = [
     "validate",
     "status",
     "doctor",
+    "plan_project_initialization",
 ]

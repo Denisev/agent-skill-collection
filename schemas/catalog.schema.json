@@ -8,6 +8,7 @@
   "properties": {
     "version": { "const": 1 },
     "collection_revision": { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "collection_url": { "type": "string" },
     "skills": { "type": "array", "items": { "$ref": "#/$defs/skill" } }
   },
   "$defs": {
