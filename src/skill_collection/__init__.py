@@ -26,6 +26,19 @@ from .activation import (
     serialize_activation_record,
 )
 from ._activation_transaction import apply_activation
+from .inspection import (
+    CapabilityCheck,
+    CapabilityOutcome,
+    DoctorCategory,
+    DoctorReport,
+    Guidance,
+    GuidedIssue,
+    ProjectStatus,
+    RecommendedCommand,
+    StatusCategory,
+    status,
+    doctor,
+)
 
 __all__ = [
     "ActivationPlan",
@@ -48,10 +61,21 @@ __all__ = [
     "ReviewStatus",
     "WriteActivationRecordAction",
     "ValidationIssue",
+    "CapabilityCheck",
+    "CapabilityOutcome",
+    "DoctorCategory",
+    "DoctorReport",
+    "Guidance",
+    "GuidedIssue",
+    "ProjectStatus",
+    "RecommendedCommand",
+    "StatusCategory",
     "plan_activation",
     "apply_activation",
     "prepare_activation",
     "scan",
     "serialize_activation_record",
     "validate",
+    "status",
+    "doctor",
 ]

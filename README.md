@@ -4,10 +4,12 @@
 skills from pinned upstream sources and collection-owned skills. Projects select
 skills through committed bindings; activation is a separate, explicit operation.
 
-This repository is currently at **Checkpoint 4B: safe project Activation**. It can
-apply an explicitly selected, freshly revalidated Activation Review inside one
-project. It contains no deactivation, installer, Source update, global mutation,
-hooks, plugins, MCP servers, or automatic update mechanism.
+This repository is currently at **Checkpoint 5: read-only project inspection**. It
+can inspect project state and platform Activation capabilities in deterministic
+JSON or human-readable text, and can apply an explicitly selected, freshly
+revalidated Activation Review inside one project. It contains no deactivation,
+installer, Source update, global mutation, hooks, plugins, MCP servers, or automatic
+update mechanism.
 
 ## Design constraints
 
@@ -82,7 +84,15 @@ PYTHONPATH=src python3 -m skill_collection validate [--collection-root PATH] [--
 PYTHONPATH=src python3 -m skill_collection plan [--collection-root PATH] --project-root PATH
 PYTHONPATH=src python3 -m skill_collection activate [--collection-root PATH] --project-root PATH
 PYTHONPATH=src python3 -m skill_collection activate [--collection-root PATH] --project-root PATH --apply --plan-id ID
+PYTHONPATH=src python3 -m skill_collection status [--collection-root PATH] --project-root PATH [--format json|text]
+PYTHONPATH=src python3 -m skill_collection doctor [--collection-root PATH] --project-root PATH [--format json|text]
 ```
+
+`status` maps the existing Activation Review to `blocked`, `inactive`, `active`, or
+`drifted`. `doctor` adds non-mutating inspection of the platform capabilities used
+by Activation preflight. JSON remains the default; text output is available only
+for these two inspection commands. Neither command initializes, repairs, relinks,
+deactivates, or otherwise changes either root.
 
 `scan` recursively discovers regular `SKILL.md` files without following directory
 symlinks and correlates them exactly by Source and Catalog path. `plan` returns an

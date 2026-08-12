@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import tempfile
 import unittest
+import errno
 from pathlib import Path
 from unittest.mock import patch
 import os
@@ -219,7 +220,7 @@ class ActivationApplyPublicSeamTests(unittest.TestCase):
 
             def reject_regular_file(fd: int) -> None:
                 if __import__("stat").S_ISREG(os.fstat(fd).st_mode):
-                    raise OSError("regular fsync unsupported")
+                    raise OSError(errno.EINVAL, "regular fsync unsupported")
                 real_fsync(fd)
 
             with patch("os.fsync", side_effect=reject_regular_file):
@@ -317,7 +318,7 @@ class ActivationApplyPublicSeamTests(unittest.TestCase):
             project = Path(directory)
             write_binding(project)
             review = prepare_activation(collection, project)
-            with patch("skill_collection.activation.os.fsync", side_effect=OSError("unsupported")):
+            with patch("skill_collection.activation.os.fsync", side_effect=OSError(errno.EINVAL, "unsupported")):
                 result = apply_activation(collection, project, review.plan_id)
             self.assertEqual(result.status, "blocked")
             self.assertEqual(

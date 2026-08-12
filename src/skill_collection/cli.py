@@ -5,12 +5,13 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TextIO
 
-from .output import error_document, json_document
+from .output import error_document, inspection_text, json_document
 from .planning import plan_activation
 from .activation import prepare_activation
 from ._activation_transaction import apply_activation
 from .scanning import scan
 from .validation import validate
+from .inspection import doctor, status
 
 
 class _UsageError(Exception):
@@ -48,6 +49,14 @@ def main(
             project = _absolute(arguments.project_root)
             result = plan_activation(collection, project)
             exit_code = 1 if result.status == "blocked" else 0
+        elif arguments.command == "status":
+            project = _absolute(arguments.project_root)
+            result = status(collection, project)
+            exit_code = 0 if result.category == "active" else 1
+        elif arguments.command == "doctor":
+            project = _absolute(arguments.project_root)
+            result = doctor(collection, project)
+            exit_code = 0 if result.category == "ok" else 1
         else:
             project = _absolute(arguments.project_root)
             if arguments.apply and arguments.plan_id is None:
@@ -60,7 +69,8 @@ def main(
                 else prepare_activation(collection, project)
             )
             exit_code = 1 if result.status in ("blocked", "failed") else 0
-        stdout.write(json_document(arguments.command, result))
+        output_format = getattr(arguments, "format", "json")
+        stdout.write(json_document(arguments.command, result) if output_format == "json" else inspection_text(result))
         return exit_code
     except _UsageError as error:
         error.parser.print_usage(file=stderr)
@@ -110,6 +120,11 @@ def _build_parser() -> argparse.ArgumentParser:
     plan_parser = subparsers.add_parser("plan")
     _collection_flag(plan_parser)
     plan_parser.add_argument("--project-root", required=True)
+    for command in ("status", "doctor"):
+        inspection_parser = subparsers.add_parser(command)
+        _collection_flag(inspection_parser)
+        inspection_parser.add_argument("--project-root", required=True)
+        inspection_parser.add_argument("--format", choices=("json", "text"), default="json")
     activate_parser = subparsers.add_parser("activate")
     _collection_flag(activate_parser)
     activate_parser.add_argument("--project-root", required=True)

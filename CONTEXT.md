@@ -45,6 +45,18 @@ _Avoid_: Installation, deployment
 The immutable outcome of one apply request: applied, unchanged, blocked, or failed. Its creation fields are an invocation history; a Cleanup Report separately states what remained after failure cleanup.
 _Avoid_: Transaction log, installation result
 
+**Project Status**:
+An immutable, deterministic projection of an Activation Review for one project. It reports observed state and does not authorize mutation.
+_Avoid_: Health check, repair plan
+
+**Doctor Report**:
+A Project Status together with inspection of the platform capabilities required by safe Activation. It performs no probe writes and does not guarantee that later state will remain unchanged.
+_Avoid_: Certification, repair report
+
+**Guidance**:
+Stable presentation metadata attached to an existing issue. Guidance explains a next inspection step without changing issue semantics or performing repair.
+_Avoid_: Fix, remediation action
+
 **Cleanup Report**:
 The deterministic account of best-effort removal performed after a failed invocation. It is not durable ownership proof and is not a Rollback.
 _Avoid_: Rollback, repair record

@@ -19,6 +19,11 @@ from .activation import (
     serialize_activation_record,
 )
 from .validation import Location, ValidationIssue
+from ._capabilities import (
+    containment_capability,
+    directory_fsync_capability,
+    regular_file_fsync_capability,
+)
 
 
 # Transaction implementation follows.
@@ -527,51 +532,36 @@ class _ProjectDirectory:
 
 
 def _mutation_support_issue(project: Path) -> ValidationIssue | None:
-    required_dir_fd = (
-        os.open,
-        os.stat,
-        os.readlink,
-        os.mkdir,
-        os.symlink,
-        os.unlink,
-        os.rmdir,
-        os.link,
-    )
-    if (
-        not hasattr(os, "O_NOFOLLOW")
-        or any(function not in os.supports_dir_fd for function in required_dir_fd)
-        or os.link not in os.supports_follow_symlinks
-        or os.stat not in os.supports_follow_symlinks
-    ):
+    if containment_capability() != "supported":
         return ValidationIssue(
             "activation.containment_unsupported",
             "This platform cannot safely confine project activation.",
             Location("project", "."),
         )
-    try:
-        fd = os.open(project.resolve(strict=True), os.O_RDONLY | os.O_DIRECTORY)
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-    except OSError:
+    directory_result = directory_fsync_capability(project)
+    if directory_result == "unsupported":
         return ValidationIssue(
             "activation.directory_fsync_unsupported",
             "This platform cannot durably synchronize project directories.",
             Location("project", "."),
         )
-    try:
-        fd = os.open(
-            project / "skill-collection.toml", os.O_RDONLY | os.O_NOFOLLOW
+    if directory_result == "target-unavailable":
+        return ValidationIssue(
+            "activation.precondition_changed",
+            "A reviewed filesystem precondition changed before activation began.",
+            Location("project", "."),
         )
-        try:
-            os.fsync(fd)
-        finally:
-            os.close(fd)
-    except OSError:
+    file_result = regular_file_fsync_capability(project / "skill-collection.toml")
+    if file_result == "unsupported":
         return ValidationIssue(
             "activation.file_fsync_unsupported",
             "This platform cannot durably synchronize regular files.",
+            Location("project", "skill-collection.toml"),
+        )
+    if file_result == "target-unavailable":
+        return ValidationIssue(
+            "activation.precondition_changed",
+            "A reviewed filesystem precondition changed before activation began.",
             Location("project", "skill-collection.toml"),
         )
     return None
