@@ -13,6 +13,7 @@ from .scanning import scan
 from .validation import validate
 from .inspection import doctor, status
 from .initialization import plan_project_initialization
+from ._initialization_transaction import apply_project_initialization
 
 
 class _UsageError(Exception):
@@ -60,8 +61,18 @@ def main(
             exit_code = 0 if result.category == "ok" else 1
         elif arguments.command == "init-project":
             project = _absolute(arguments.project_root)
-            result = plan_project_initialization(collection, project, arguments.profile)
-            exit_code = 1 if result.status == "blocked" else 0
+            if arguments.apply and arguments.plan_id is None:
+                raise _UsageError(parser, "--plan-id is required with --apply")
+            if not arguments.apply and arguments.plan_id is not None:
+                raise _UsageError(parser, "--plan-id requires --apply")
+            result = (
+                apply_project_initialization(
+                    collection, project, arguments.profile, arguments.plan_id
+                )
+                if arguments.apply
+                else plan_project_initialization(collection, project, arguments.profile)
+            )
+            exit_code = 1 if result.status in ("blocked", "failed") else 0
         else:
             project = _absolute(arguments.project_root)
             if arguments.apply and arguments.plan_id is None:
@@ -82,16 +93,23 @@ def main(
         stderr.write(f"{error.parser.prog}: error: {error.message}\n")
         return 2
     except KeyboardInterrupt as error:
-        cleanup = getattr(error, "activation_cleanup_report", None)
+        initialization_cleanup = getattr(error, "initialization_cleanup_report", None)
+        cleanup = initialization_cleanup or getattr(error, "activation_cleanup_report", None)
         if cleanup is not None and (cleanup.remaining_objects or cleanup.issues):
             stderr.write(
                 error_document(
-                    "system.interrupted", "Activation was interrupted.", cleanup=cleanup
+                    "system.interrupted",
+                    (
+                        "Project initialization was interrupted."
+                        if initialization_cleanup is not None
+                        else "Activation was interrupted."
+                    ),
+                    cleanup=cleanup,
                 )
             )
         return 130
     except Exception as error:
-        cleanup = getattr(error, "activation_cleanup_report", None)
+        cleanup = getattr(error, "initialization_cleanup_report", None) or getattr(error, "activation_cleanup_report", None)
         stderr.write(
             error_document(
                 "system.unexpected",
@@ -130,6 +148,8 @@ def _build_parser() -> argparse.ArgumentParser:
     initialization_parser.add_argument("--project-root", required=True)
     initialization_parser.add_argument("--profile", required=True)
     initialization_parser.add_argument("--format", choices=("json", "text"), default="json")
+    initialization_parser.add_argument("--apply", action="store_true")
+    initialization_parser.add_argument("--plan-id")
     for command in ("status", "doctor"):
         inspection_parser = subparsers.add_parser(command)
         _collection_flag(inspection_parser)

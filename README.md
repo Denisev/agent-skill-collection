@@ -75,7 +75,7 @@ Run the tests with Python 3.11 or newer:
 PYTHONPATH=src python3 -m unittest discover -s tests
 ```
 
-## Read-only commands
+## Commands
 
 The CLI exposes deterministic read-only and Activation commands:
 
@@ -88,10 +88,13 @@ PYTHONPATH=src python3 -m skill_collection activate [--collection-root PATH] --p
 PYTHONPATH=src python3 -m skill_collection status [--collection-root PATH] --project-root PATH [--format json|text]
 PYTHONPATH=src python3 -m skill_collection doctor [--collection-root PATH] --project-root PATH [--format json|text]
 PYTHONPATH=src python3 -m skill_collection init-project [--collection-root PATH] --project-root PATH --profile PROFILE [--format json|text]
+PYTHONPATH=src python3 -m skill_collection init-project [--collection-root PATH] --project-root PATH --profile PROFILE --apply --plan-id ID [--format json|text]
 ```
 
-`init-project` is read-only and dry-run only. It blocks when
-`skill-collection.toml` exists in any form and has no `--apply` option.
+`init-project` remains read-only by default. Its explicit `--apply --plan-id`
+handshake exclusively creates the exact reviewed `skill-collection.toml` and
+blocks when that destination already exists in any form. It does not activate
+Skills or create any other project state.
 
 `status` maps the existing Activation Review to `blocked`, `inactive`, `active`, or
 `drifted`. `doctor` adds non-mutating inspection of the platform capabilities used

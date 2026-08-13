@@ -45,6 +45,18 @@ _Avoid_: Installation, Activation
 An immutable, deterministic, read-only description of the one Binding creation that Project Initialization would require. A blocked Initialization Plan contains issues and no proposed action or Binding preview.
 _Avoid_: Activation Plan, transaction
 
+**Initialization Application**:
+One request to create the first project Binding from an exact, freshly revalidated Initialization Plan. It exclusively publishes that Binding or reports that creation did not complete.
+_Avoid_: Activation, installation
+
+**Initialization Result**:
+The immutable outcome of one Initialization Application: created, blocked, or failed. Creation fields describe only what that invocation observed itself create and are not durable ownership records.
+_Avoid_: Activation Result, ownership record
+
+**Initialization Cleanup Report**:
+The deterministic account of best-effort removal after an Initialization Application fails or is interrupted. It is not a Rollback, repair instruction, durable journal, or ownership proof.
+_Avoid_: Rollback, recovery record
+
 **Catalog**:
 The generated inventory of resolved Skills and their provenance, paths, and Codex-facing names at a specific collection state. It is derived data and is not hand edited.
 _Avoid_: Registry, manifest
