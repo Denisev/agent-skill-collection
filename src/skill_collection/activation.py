@@ -1,38 +1,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import errno
 import hashlib
-import json
 import os
 from pathlib import Path
 import re
-import stat
 import tomllib
 from typing import Literal
 
 from ._issues import normalize_issues
+from ._binding import (
+    canonical_digest as _digest,
+    canonical_json as _canonical_json,
+    semantic_binding_payload as _binding_payload,
+    toml_string as _toml_string,
+)
+from ._filesystem import FilesystemKind, inspect_symlink, kind_from_mode
 from .planning import ProposedAction, _activation_record_issue, _plan_activation
 from .validation import Location, ValidationIssue
 
 
 ActivationMode = Literal["initial", "repeat", "repair"]
 ReviewStatus = Literal["ready", "blocked"]
-FilesystemKind = Literal[
-    "absent",
-    "directory",
-    "regular-file",
-    "symlink",
-    "broken-symlink",
-    "looping-symlink",
-    "fifo",
-    "socket",
-    "block-device",
-    "character-device",
-    "unreadable",
-]
-
-
 @dataclass(frozen=True, slots=True)
 class ManagedLink:
     location: Location
@@ -417,10 +406,6 @@ def _serialize_valid_activation_record(record: ActivationRecord) -> bytes:
     return rendered
 
 
-def _toml_string(value: str) -> str:
-    return json.dumps(value, ensure_ascii=False)
-
-
 def _contains_surrogate(value: str) -> bool:
     return any(0xD800 <= ord(character) <= 0xDFFF for character in value)
 
@@ -500,36 +485,6 @@ def _validate_activation_record(record: ActivationRecord) -> None:
 def _read_toml(path: Path) -> dict[str, object]:
     with path.open("rb") as stream:
         return tomllib.load(stream)
-
-
-def _canonical_json(payload: object) -> bytes:
-    return json.dumps(
-        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
-
-
-def _digest(payload: object) -> str:
-    return "sha256:" + hashlib.sha256(_canonical_json(payload)).hexdigest()
-
-
-def _binding_payload(binding: dict[str, object]) -> dict[str, object]:
-    collection = binding["collection"]
-    assert isinstance(collection, dict)
-    return {
-        "binding_schema_version": 1,
-        "location": {"root": "project", "path": "skill-collection.toml"},
-        "document": {
-            "version": 1,
-            "collection": {
-                "url": collection["url"],
-                "revision": collection["revision"],
-            },
-            "profile": binding["profile"],
-            "target": binding.get("target", ".agents/skills"),
-            "add": sorted(binding.get("add", [])),
-            "remove": sorted(binding.get("remove", [])),
-        },
-    }
 
 
 def _location_payload(location: Location) -> dict[str, str]:
@@ -613,23 +568,10 @@ def _inspect_location(
         )
 
     mode = metadata.st_mode
-    if stat.S_ISLNK(mode):
-        try:
-            link_text = os.readlink(path)
-        except OSError:
-            return FilesystemPrecondition(
-                location, "unreadable", None, None, None, False, False, False
-            )
-        try:
-            resolved = path.resolve(strict=True)
-        except RuntimeError:
-            return FilesystemPrecondition(
-                location, "looping-symlink", link_text, None, None, False, False, False
-            )
-        except OSError as error:
-            kind: FilesystemKind = (
-                "looping-symlink" if error.errno == errno.ELOOP else "broken-symlink"
-            )
+    kind = kind_from_mode(mode)
+    if kind == "symlink":
+        kind, link_text, resolved = inspect_symlink(path)
+        if kind != "symlink" or resolved is None:
             return FilesystemPrecondition(
                 location, kind, link_text, None, None, False, False, False
             )
@@ -651,11 +593,11 @@ def _inspect_location(
 
     readable = os.access(path, os.R_OK)
     writable = os.access(path, os.W_OK)
-    if stat.S_ISDIR(mode):
+    if kind == "directory":
         return FilesystemPrecondition(
             location, "directory", None, None, None, readable, writable, os.access(path, os.X_OK)
         )
-    if stat.S_ISREG(mode):
+    if kind == "regular-file":
         try:
             content_digest = hashlib.sha256(path.read_bytes()).hexdigest()
         except OSError:
@@ -665,14 +607,6 @@ def _inspect_location(
         return FilesystemPrecondition(
             location, "regular-file", None, None, content_digest, readable, writable, False
         )
-    if stat.S_ISFIFO(mode):
-        kind: FilesystemKind = "fifo"
-    elif stat.S_ISSOCK(mode):
-        kind = "socket"
-    elif stat.S_ISBLK(mode):
-        kind = "block-device"
-    else:
-        kind = "character-device"
     return FilesystemPrecondition(
         location, kind, None, None, None, readable, writable, False
     )

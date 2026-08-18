@@ -33,6 +33,30 @@ _Avoid_: Preset, environment
 A project-owned declaration selecting one Profile and optionally adding or removing Skills. A Binding is portable and records intent, not generated filesystem state.
 _Avoid_: Installation, lock file
 
+**Collection URL**:
+The canonical, portable network location committed in the Catalog for identifying the collection in a Binding. It is a locator, not a local Git remote, checkout path, credential source, or reachability claim.
+_Avoid_: Origin URL, checkout URL
+
+**Project Initialization**:
+The deliberate creation of the first project Binding for one validated collection revision and Profile. It establishes project intent and does not activate Skills.
+_Avoid_: Installation, Activation
+
+**Initialization Plan**:
+An immutable, deterministic, read-only description of the one Binding creation that Project Initialization would require. A blocked Initialization Plan contains issues and no proposed action or Binding preview.
+_Avoid_: Activation Plan, transaction
+
+**Initialization Application**:
+One request to create the first project Binding from an exact, freshly revalidated Initialization Plan. It exclusively publishes that Binding or reports that creation did not complete.
+_Avoid_: Activation, installation
+
+**Initialization Result**:
+The immutable outcome of one Initialization Application: created, created with incomplete cleanup, blocked, or failed. Created with incomplete cleanup means the Binding is valid and project-owned while only the invocation's temporary hard link remains for project-owner recovery. Creation fields describe only what that invocation observed itself create and are not durable ownership records.
+_Avoid_: Activation Result, ownership record
+
+**Initialization Cleanup Report**:
+The deterministic account of best-effort removal after an Initialization Application fails or is interrupted. It is not a Rollback, repair instruction, durable journal, or ownership proof.
+_Avoid_: Rollback, recovery record
+
 **Catalog**:
 The generated inventory of resolved Skills and their provenance, paths, and Codex-facing names at a specific collection state. It is derived data and is not hand edited.
 _Avoid_: Registry, manifest

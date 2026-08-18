@@ -3,10 +3,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path, PurePath
-import tomllib
 
 from ._issues import normalize_issues
-from .validation import Location, ValidationIssue, validate
+from .validation import (
+    Location,
+    ValidationIssue,
+    _CollectionValidationState,
+    _validate_collection,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,12 +31,19 @@ class ScanResult:
 
 def scan(collection_root: str | Path) -> ScanResult:
     collection = Path(collection_root)
-    issues = list(validate(collection))
+    state = _validate_collection(collection)
+    return _scan_validated(collection, state)
+
+
+def _scan_validated(
+    collection: Path, state: _CollectionValidationState
+) -> ScanResult:
+    issues = list(state.issues)
     if not collection.is_dir():
         return ScanResult((), tuple(normalize_issues(issues)))
 
-    sources = _toml_array(collection / "sources.toml", "sources")
-    catalog = _toml_array(collection / "catalog.toml", "skills")
+    sources = state.sources
+    catalog = state.catalog
     catalog_by_path: dict[tuple[str, str], list[tuple[int, dict[str, object]]]] = {}
     for index, item in enumerate(catalog):
         source = item.get("source")
@@ -203,15 +214,3 @@ def scan(collection_root: str | Path) -> ScanResult:
             )
 
     return ScanResult(tuple(discovered), tuple(normalize_issues(issues)))
-
-
-def _toml_array(path: Path, key: str) -> list[dict[str, object]]:
-    try:
-        with path.open("rb") as stream:
-            document = tomllib.load(stream)
-    except (OSError, tomllib.TOMLDecodeError):
-        return []
-    value = document.get(key)
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]

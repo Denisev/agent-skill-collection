@@ -5,6 +5,8 @@ import json
 from typing import Any
 
 from .inspection import DoctorReport, GuidedIssue, ProjectStatus, RecommendedCommand
+from .initialization import InitializationPlan
+from ._initialization_transaction import InitializationResult
 
 
 def json_document(command: str, result: object) -> str:
@@ -38,9 +40,108 @@ def _value(value: object) -> Any:
     return value
 
 
-def inspection_text(result: ProjectStatus | DoctorReport) -> str:
-    lines = _doctor_lines(result) if isinstance(result, DoctorReport) else _status_lines(result)
+def inspection_text(result: ProjectStatus | DoctorReport | InitializationPlan | InitializationResult) -> str:
+    if isinstance(result, InitializationResult):
+        lines = _initialization_result_lines(result)
+    elif isinstance(result, InitializationPlan):
+        lines = _initialization_lines(result)
+    else:
+        lines = _doctor_lines(result) if isinstance(result, DoctorReport) else _status_lines(result)
     return "\n".join(lines) + "\n"
+
+
+def _initialization_result_lines(result: InitializationResult) -> list[str]:
+    location = (
+        f"{result.binding_location.root}:{_escape(result.binding_location.relative_path)}"
+        if result.binding_location is not None else "-"
+    )
+    lines = [
+        f"Project initialization apply: {result.status}",
+        f"Binding: {location}",
+        f"Binding digest: {result.binding_digest or '-'}",
+        f"Plan ID: {result.plan_id or '-'}",
+        "",
+        f"Issues ({len(result.issues)}):",
+    ]
+    if result.issues:
+        for index, issue in enumerate(result.issues, 1):
+            lines.extend([
+                f"{index}. [{_escape(issue.code)}] {_escape(issue.message)}",
+                f"   Location: {issue.location.root}:{_escape(issue.location.relative_path)}",
+            ])
+    else:
+        lines.append("None.")
+    lines.extend(["", "Cleanup:"])
+    if result.cleanup is None:
+        lines.append("None.")
+    else:
+        cleanup = result.cleanup
+        lines.extend([
+            f"Attempted: {'yes' if cleanup.attempted else 'no'}",
+            f"Removed Binding: {'yes' if cleanup.removed_binding else 'no'}",
+            f"Removed temporary files ({len(cleanup.removed_temporary_files)}):",
+            *(f"- {item.root}:{_escape(item.relative_path)}" for item in cleanup.removed_temporary_files),
+            f"Remaining objects ({len(cleanup.remaining_objects)}):",
+            *(f"- {item.root}:{_escape(item.relative_path)}" for item in cleanup.remaining_objects),
+            f"Cleanup issues ({len(cleanup.issues)}):",
+            *(
+                f"- [{_escape(issue.code)}] {_escape(issue.message)}"
+                for issue in cleanup.issues
+            ),
+        ])
+    if result.status == "created_with_incomplete_cleanup":
+        lines.extend([
+            "",
+            "Recovery: Keep the Binding. Inspect the Cleanup section before removing any",
+            "reported temporary file.",
+        ])
+    return lines
+
+
+def _initialization_lines(result: InitializationPlan) -> list[str]:
+    lines = [
+        f"Project initialization: {result.status}",
+        f"Profile: {result.profile or '-'}",
+        f"Collection revision: {result.collection_revision or '-'}",
+        f"Collection URL: {result.collection_url or '-'}",
+        "Binding: project:skill-collection.toml",
+        f"Binding state: {result.binding_observation.kind}",
+        f"Binding digest: {result.binding_digest or '-'}",
+        f"Plan ID: {result.plan_id or '-'}",
+        "",
+        f"Proposed actions ({len(result.actions)}):",
+    ]
+    if result.actions:
+        for index, action in enumerate(result.actions, 1):
+            lines.extend([
+                f"{index}. [{action.kind}] {action.location.root}:{_escape(action.location.relative_path)}",
+                f"   Precondition: {action.precondition}",
+                f"   Content SHA-256: {action.content_sha256}",
+                f"   Action ID: {action.action_id}",
+            ])
+    else:
+        lines.append("None.")
+    lines.extend(["", "Binding content:"])
+    if result.binding_content is None:
+        lines.append("None.")
+    else:
+        lines.extend(f"  {line}" for line in result.binding_content.removesuffix("\n").split("\n"))
+    lines.extend(["", f"Issues ({len(result.blocking_issues)}):"])
+    if not result.blocking_issues:
+        lines.append("None.")
+    else:
+        for index, issue in enumerate(result.blocking_issues, 1):
+            lines.extend([
+                f"{index}. [{_escape(issue.code)}] {_escape(issue.message)}",
+                f"   Location: {issue.location.root}:{_escape(issue.location.relative_path)}",
+            ])
+            if issue.related_locations:
+                related = ", ".join(
+                    f"{item.root}:{_escape(item.relative_path)}"
+                    for item in issue.related_locations
+                )
+                lines.append(f"   Related: {related}")
+    return lines
 
 
 def _status_lines(result: ProjectStatus, *, nested: bool = False) -> list[str]:

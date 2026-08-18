@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import ipaddress
 import os
 from pathlib import Path
 from pathlib import PurePath
@@ -10,6 +11,7 @@ import tomllib
 from collections.abc import Callable
 from typing import Literal
 from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from ._issues import normalize_issues
 from ._resolution import resolve_group, resolve_profile
@@ -39,19 +41,64 @@ _COLLECTION_DOCUMENTS = (
 )
 
 
+@dataclass(frozen=True, slots=True)
+class _CollectionValidationState:
+    documents: dict[str, dict[str, object]]
+    sources: list[dict[str, object]]
+    catalog: list[dict[str, object]]
+    groups: list[dict[str, object]]
+    profiles: list[dict[str, object]]
+    group_map: dict[str, dict[str, object]]
+    profile_map: dict[str, dict[str, object]]
+    invalid_profiles: set[str]
+    skill_ids: set[str]
+    issues: tuple[ValidationIssue, ...]
+
+
 def validate(
     collection_root: str | Path, project_root: str | Path | None = None
 ) -> list[ValidationIssue]:
     """Return deterministic validation issues without changing either root."""
     collection = Path(collection_root)
-    if not collection.exists() or not collection.is_dir():
-        return [
-            ValidationIssue(
-                "root.missing",
-                "Collection root does not exist or is not a directory.",
-                Location("collection", "."),
+    state = _validate_collection(collection)
+    issues = list(state.issues)
+
+    if project_root is not None:
+        project = Path(project_root)
+        if not project.exists() or not project.is_dir():
+            issues.append(
+                ValidationIssue(
+                    "root.missing",
+                    "Project root does not exist or is not a directory.",
+                    Location("project", "."),
+                )
             )
-        ]
+        else:
+            _validate_project(
+                collection,
+                project,
+                state.catalog,
+                state.profile_map,
+                state.invalid_profiles,
+                state.group_map,
+                issues,
+            )
+
+    return normalize_issues(issues)
+
+
+def _validate_collection(collection: Path) -> _CollectionValidationState:
+    if not collection.exists() or not collection.is_dir():
+        return _CollectionValidationState(
+            {}, [], [], [], [], {}, {}, set(), set(),
+            (
+                ValidationIssue(
+                    "root.missing",
+                    "Collection root does not exist or is not a directory.",
+                    Location("collection", "."),
+                ),
+            ),
+        )
 
     issues: list[ValidationIssue] = [
         ValidationIssue(
@@ -81,29 +128,18 @@ def validate(
     skill_ids = _validate_catalog(collection, catalog, sources, issues)
     group_map = _validate_groups(groups, skill_ids, issues)
     profile_map, invalid_profiles = _validate_profiles(profiles, skill_ids, group_map, issues)
-
-    if project_root is not None:
-        project = Path(project_root)
-        if not project.exists() or not project.is_dir():
-            issues.append(
-                ValidationIssue(
-                    "root.missing",
-                    "Project root does not exist or is not a directory.",
-                    Location("project", "."),
-                )
-            )
-        else:
-            _validate_project(
-                collection,
-                project,
-                catalog,
-                profile_map,
-                invalid_profiles,
-                group_map,
-                issues,
-            )
-
-    return normalize_issues(issues)
+    return _CollectionValidationState(
+        documents,
+        sources,
+        catalog,
+        groups,
+        profiles,
+        group_map,
+        profile_map,
+        invalid_profiles,
+        skill_ids,
+        tuple(normalize_issues(issues)),
+    )
 
 
 def _read_toml(
@@ -128,7 +164,7 @@ def _document_entries(
         return []
     allowed_root = {"version", key}
     if filename == "catalog.toml":
-        allowed_root.add("collection_revision")
+        allowed_root.update(("collection_revision", "collection_url"))
     for property_name in document.keys() - allowed_root:
         _unexpected(issues, "collection", f"{filename}#{property_name}")
     if "version" not in document:
@@ -141,6 +177,10 @@ def _document_entries(
             _required(issues, "collection", "catalog.toml#collection_revision")
         elif not isinstance(revision, str) or _REVISION.fullmatch(revision) is None:
             _invalid(issues, "collection", "catalog.toml#collection_revision")
+        if "collection_url" in document and not is_portable_collection_url(
+            document["collection_url"]
+        ):
+            _invalid(issues, "collection", "catalog.toml#collection_url")
     if key not in document:
         _required(issues, "collection", f"{filename}#{key}")
         return []
@@ -203,6 +243,70 @@ def _duplicate(
 _IDENTIFIER = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _REVISION = re.compile(r"^[0-9a-f]{40}$")
 _CONTENT_HASH = re.compile(r"^sha256:[0-9a-f]{64}$")
+_SSH_USERNAME = re.compile(r"^[A-Za-z0-9._~-]+$")
+_DNS_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+_URI_CHARACTER = re.compile(r"^[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
+
+
+def is_portable_collection_url(value: object) -> bool:
+    if not isinstance(value, str) or not value or _URI_CHARACTER.fullmatch(value) is None:
+        return False
+    for index, character in enumerate(value):
+        if character == "%" and (
+            index + 2 >= len(value)
+            or any(item not in "0123456789abcdefABCDEF" for item in value[index + 1:index + 3])
+        ):
+            return False
+    try:
+        split = urlsplit(value)
+        port = split.port
+    except ValueError:
+        return False
+    if split.scheme not in ("https", "ssh", "git") or not value.startswith(f"{split.scheme}://"):
+        return False
+    if not split.netloc or not split.hostname or not split.path.startswith("/"):
+        return False
+    if split.query or split.fragment:
+        return False
+    authority = split.netloc
+    if split.scheme in ("https", "git"):
+        if split.username is not None or split.password is not None or "@" in authority:
+            return False
+    else:
+        if split.password is not None:
+            return False
+        if "@" in authority:
+            if authority.count("@") != 1 or split.username is None:
+                return False
+            if _SSH_USERNAME.fullmatch(split.username) is None or "%" in split.username:
+                return False
+    if port is not None:
+        port_text = authority.rsplit(":", 1)[1]
+        if not port_text.isascii() or not port_text.isdecimal() or not 1 <= port <= 65535:
+            return False
+    elif authority.endswith(":"):
+        return False
+    return _valid_url_host(split.hostname, authority)
+
+
+def _valid_url_host(hostname: str, authority: str) -> bool:
+    if "[" in authority or "]" in authority:
+        try:
+            ipaddress.IPv6Address(hostname)
+        except ValueError:
+            return False
+        return True
+    try:
+        ipaddress.IPv4Address(hostname)
+        return True
+    except ValueError:
+        pass
+    if all(character in "0123456789." for character in hostname):
+        return False
+    if len(hostname) > 253:
+        return False
+    labels = hostname.split(".")
+    return all(_DNS_LABEL.fullmatch(label) is not None for label in labels)
 
 
 def _validate_identifier(
