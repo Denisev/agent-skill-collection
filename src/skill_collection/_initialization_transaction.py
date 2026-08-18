@@ -16,7 +16,9 @@ from .initialization import InitializationPlan, plan_project_initialization
 from .validation import Location, ValidationIssue
 
 
-InitializationApplyStatus: TypeAlias = Literal["created", "blocked", "failed"]
+InitializationApplyStatus: TypeAlias = Literal[
+    "created", "created_with_incomplete_cleanup", "blocked", "failed"
+]
 _BINDING = Location("project", "skill-collection.toml")
 _ROOT = Location("project", ".")
 
@@ -45,6 +47,10 @@ class _Ledger:
     temporary: Location | None = None
     temporary_identity: tuple[int, int] | None = None
     binding_identity: tuple[int, int] | None = None
+    committed: bool = False
+    temporary_removed: bool = False
+    temporary_unlink_failed: bool = False
+    temporary_cleanup_issue: ValidationIssue | None = None
 
     @property
     def started(self) -> bool:
@@ -110,6 +116,8 @@ def apply_project_initialization(
             path_review.close()
             return _blocked((_failure_issue(error),))
         cleanup = _cleanup(path_review, ledger, error)
+        if ledger.committed:
+            return _created_with_incomplete_cleanup(second, ledger, cleanup)
         return InitializationResult(
             "failed", second.plan_id, _BINDING, second.binding_digest,
             (_failure_issue(error),), cleanup,
@@ -134,6 +142,8 @@ def apply_project_initialization(
                 "A reviewed initialization precondition changed before Binding creation completed.",
             ),))
         cleanup = _cleanup(path_review, ledger, error)
+        if ledger.committed:
+            return _created_with_incomplete_cleanup(second, ledger, cleanup)
         return InitializationResult(
             "failed", second.plan_id, _BINDING, second.binding_digest,
             (_issue("initialization.operation_failed", "Project Binding creation could not be completed."),),
@@ -208,12 +218,29 @@ def _apply_transaction(review: _PathReview, plan: InitializationPlan, ledger: _L
         raise _InitializationFailure("initialization.binding_verification_failed")
     _fsync_directory(review.project_fd)
     _verify_file(review.project_fd, "skill-collection.toml", ledger.binding_identity, data, plan.binding_digest)
-    _unlink_owned(review.project_fd, temporary, ledger.temporary_identity)
-    _fsync_directory(review.project_fd)
-    ledger.temporary = None
-    ledger.temporary_identity = None
     review.verify()
     _verify_file(review.project_fd, "skill-collection.toml", ledger.binding_identity, data, plan.binding_digest)
+    ledger.committed = True
+    try:
+        _unlink_owned(review.project_fd, temporary, ledger.temporary_identity)
+    except OSError:
+        ledger.temporary_unlink_failed = True
+        ledger.temporary_cleanup_issue = ValidationIssue(
+            "initialization.cleanup_remove_failed",
+            "Cleanup could not remove an invocation-created object.", ledger.temporary,
+        )
+        raise
+    ledger.temporary_removed = True
+    try:
+        _fsync_directory(review.project_fd)
+    except _InitializationFailure:
+        ledger.temporary_cleanup_issue = ValidationIssue(
+            "initialization.cleanup_directory_fsync_failed",
+            "Cleanup directory synchronization could not be confirmed.", _ROOT,
+        )
+        raise
+    ledger.temporary = None
+    ledger.temporary_identity = None
 
 
 def _create_temporary(project_fd: int, ledger: _Ledger) -> tuple[str, int]:
@@ -225,7 +252,11 @@ def _create_temporary(project_fd: int, ledger: _Ledger) -> tuple[str, int]:
         except FileExistsError:
             continue
         ledger.temporary = Location("project", name)
-        ledger.temporary_identity = _identity_fd(fd)
+        try:
+            ledger.temporary_identity = _identity_fd(fd)
+        except BaseException as error:
+            _close_fd_secondary(fd, error)
+            raise
         return name, fd
     raise _InitializationFailure("initialization.temporary_unavailable")
 
@@ -436,9 +467,17 @@ def _cleanup(
     review: _PathReview, ledger: _Ledger, primary: BaseException | None = None,
 ) -> InitializationCleanupReport:
     removed_binding = False
-    removed_temporary: list[Location] = []
-    remaining: list[Location] = []
-    issues: list[ValidationIssue] = []
+    removed_temporary: list[Location] = (
+        [ledger.temporary] if ledger.temporary_removed and ledger.temporary is not None else []
+    )
+    remaining: list[Location] = (
+        [ledger.temporary]
+        if ledger.committed and ledger.temporary_unlink_failed and ledger.temporary is not None
+        else []
+    )
+    issues: list[ValidationIssue] = (
+        [ledger.temporary_cleanup_issue] if ledger.temporary_cleanup_issue is not None else []
+    )
     if primary is not None and _has_descriptor_close_failure(primary):
         _append_descriptor_close_issue(issues)
     try:
@@ -447,12 +486,16 @@ def _cleanup(
         _append_descriptor_close_issue(issues)
     except BaseException:
         pass
-    if ledger.binding_identity is not None:
+    if not ledger.committed and ledger.binding_identity is not None:
         if _cleanup_name(review.project_fd, "skill-collection.toml", ledger.binding_identity, _BINDING, issues):
             removed_binding = True
         else:
             remaining.append(_BINDING)
-    if ledger.temporary is not None:
+    if (
+        ledger.temporary is not None
+        and not ledger.temporary_removed
+        and not ledger.temporary_unlink_failed
+    ):
         if ledger.temporary_identity is not None and _cleanup_name(
             review.project_fd, ledger.temporary.relative_path,
             ledger.temporary_identity, ledger.temporary, issues,
@@ -554,10 +597,14 @@ def _cleanup_name(
         ))
         return False
     except OSError:
-        issues.append(ValidationIssue(
-            "initialization.cleanup_remove_failed",
-            "Cleanup could not remove an invocation-created object.", location,
-        ))
+        if not any(
+            issue.code == "initialization.cleanup_remove_failed" and issue.location == location
+            for issue in issues
+        ):
+            issues.append(ValidationIssue(
+                "initialization.cleanup_remove_failed",
+                "Cleanup could not remove an invocation-created object.", location,
+            ))
         return False
 
 
@@ -577,6 +624,22 @@ def _identity_fd(fd: int) -> tuple[int, int]:
 
 def _identity(metadata: os.stat_result) -> tuple[int, int]:
     return metadata.st_dev, metadata.st_ino
+
+
+def _created_with_incomplete_cleanup(
+    plan: InitializationPlan, ledger: _Ledger, cleanup: InitializationCleanupReport,
+) -> InitializationResult:
+    assert plan.plan_id is not None
+    assert plan.binding_digest is not None
+    assert ledger.temporary is not None
+    return InitializationResult(
+        "created_with_incomplete_cleanup", plan.plan_id, _BINDING,
+        plan.binding_digest, (ValidationIssue(
+            "initialization.temporary_cleanup_incomplete",
+            "Binding creation completed, but temporary-file cleanup could not be confirmed.",
+            ledger.temporary,
+        ),), cleanup,
+    )
 
 
 def _failure_issue(error: _InitializationFailure) -> ValidationIssue:

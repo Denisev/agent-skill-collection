@@ -89,6 +89,12 @@ def _initialization_result_lines(result: InitializationResult) -> list[str]:
                 for issue in cleanup.issues
             ),
         ])
+    if result.status == "created_with_incomplete_cleanup":
+        lines.extend([
+            "",
+            "Recovery: Keep the Binding. Inspect the Cleanup section before removing any",
+            "reported temporary file.",
+        ])
     return lines
 
 

@@ -72,7 +72,9 @@ def main(
                 if arguments.apply
                 else plan_project_initialization(collection, project, arguments.profile)
             )
-            exit_code = 1 if result.status in ("blocked", "failed") else 0
+            exit_code = 1 if result.status in (
+                "blocked", "failed", "created_with_incomplete_cleanup",
+            ) else 0
         else:
             project = _absolute(arguments.project_root)
             if arguments.apply and arguments.plan_id is None:

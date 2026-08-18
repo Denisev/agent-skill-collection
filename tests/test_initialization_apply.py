@@ -281,6 +281,9 @@ class InitializationApplyPublicSeamTests(unittest.TestCase):
 
     def test_file_sync_failure_returns_failed_and_removes_the_temporary_file(self) -> None:
         with self.initialized_roots() as (collection, project, plan), patch(
+            "skill_collection._initialization_transaction.containment_capability",
+            return_value="supported",
+        ), patch(
             "skill_collection._initialization_transaction.directory_fsync_capability",
             return_value="supported",
         ), patch(
@@ -318,6 +321,137 @@ class InitializationApplyPublicSeamTests(unittest.TestCase):
             self.assertTrue(result.cleanup.removed_binding)
             self.assertEqual(result.cleanup.remaining_objects, ())
             self.assertEqual(list(project.iterdir()), [])
+
+    def test_post_commit_temporary_cleanup_failure_keeps_the_verified_binding(self) -> None:
+        real_unlink = os.unlink
+
+        def fail_temporary_unlink(name, *arguments, **kwargs):
+            if str(name).startswith(".skill-collection.toml.tmp-"):
+                raise OSError("remove failed")
+            return real_unlink(name, *arguments, **kwargs)
+
+        with self.initialized_roots() as (collection, project, plan), patch(
+            "skill_collection._initialization_transaction.containment_capability",
+            return_value="supported",
+        ), patch(
+            "skill_collection._initialization_transaction.directory_fsync_capability",
+            return_value="supported",
+        ), patch(
+            "skill_collection._initialization_transaction.os.unlink",
+            side_effect=fail_temporary_unlink,
+        ):
+            result = apply_project_initialization(collection, project, "base", plan.plan_id)
+            binding_content = (project / "skill-collection.toml").read_text()
+
+        self.assertEqual(result.status, "created_with_incomplete_cleanup")
+        self.assertEqual(
+            [issue.code for issue in result.issues],
+            ["initialization.temporary_cleanup_incomplete"],
+        )
+        self.assertFalse(result.cleanup.removed_binding)
+        self.assertEqual(len(result.cleanup.remaining_objects), 1)
+        self.assertEqual(
+            [issue.code for issue in result.cleanup.issues],
+            ["initialization.cleanup_remove_failed"],
+        )
+        self.assertEqual(binding_content, plan.binding_content)
+
+    def test_one_shot_post_commit_temporary_cleanup_failure_is_reported(self) -> None:
+        real_unlink = os.unlink
+        failed = False
+
+        def fail_once(name, *arguments, **kwargs):
+            nonlocal failed
+            if not failed and str(name).startswith(".skill-collection.toml.tmp-"):
+                failed = True
+                raise OSError("remove failed")
+            return real_unlink(name, *arguments, **kwargs)
+
+        with self.initialized_roots() as (collection, project, plan), patch(
+            "skill_collection._initialization_transaction.containment_capability", return_value="supported"
+        ), patch(
+            "skill_collection._initialization_transaction.directory_fsync_capability", return_value="supported"
+        ), patch("skill_collection._initialization_transaction.os.unlink", side_effect=fail_once):
+            result = apply_project_initialization(collection, project, "base", plan.plan_id)
+            names = sorted(item.name for item in project.iterdir())
+            binding_content = (project / "skill-collection.toml").read_text()
+
+        self.assertEqual(result.status, "created_with_incomplete_cleanup")
+        self.assertEqual(binding_content, plan.binding_content)
+        self.assertEqual(len(names), 2)
+        self.assertEqual(len(result.cleanup.remaining_objects), 1)
+        self.assertEqual(result.cleanup.removed_temporary_files, ())
+        self.assertEqual(
+            [issue.code for issue in result.cleanup.issues],
+            ["initialization.cleanup_remove_failed"],
+        )
+
+    def test_temporary_identity_interruption_closes_its_descriptor(self) -> None:
+        real_open = os.open
+        real_close = os.close
+        real_fstat = os.fstat
+        temporary_fd: int | None = None
+        close_after_interrupt: list[int] = []
+        interrupt_delivered = False
+
+        def capture_temporary_open(*arguments, **kwargs):
+            nonlocal temporary_fd
+            fd = real_open(*arguments, **kwargs)
+            if arguments[1] & os.O_CREAT:
+                temporary_fd = fd
+            return fd
+
+        def interrupt_temporary_identity(fd: int):
+            nonlocal interrupt_delivered
+            if fd == temporary_fd:
+                interrupt_delivered = True
+                raise KeyboardInterrupt()
+            return real_fstat(fd)
+
+        def track_close(fd: int):
+            if interrupt_delivered:
+                close_after_interrupt.append(fd)
+            return real_close(fd)
+
+        with self.initialized_roots() as (collection, project, plan), patch(
+            "skill_collection._initialization_transaction.containment_capability", return_value="supported"
+        ), patch(
+            "skill_collection._initialization_transaction.directory_fsync_capability", return_value="supported"
+        ), patch("skill_collection._initialization_transaction.os.open", side_effect=capture_temporary_open), patch(
+            "skill_collection._initialization_transaction.os.fstat", side_effect=interrupt_temporary_identity
+        ), patch("skill_collection._initialization_transaction.os.close", side_effect=track_close):
+            with self.assertRaises(KeyboardInterrupt):
+                apply_project_initialization(collection, project, "base", plan.plan_id)
+
+        self.assertIsNotNone(temporary_fd)
+        self.assertEqual(close_after_interrupt[0], temporary_fd)
+
+    def test_post_commit_temporary_cleanup_sync_failure_reports_removed_temporary(self) -> None:
+        with self.initialized_roots() as (collection, project, plan):
+            real_fsync = os.fsync
+            calls = 0
+
+            def fail_temporary_cleanup_sync(fd: int) -> None:
+                nonlocal calls
+                calls += 1
+                if calls == 3:
+                    raise OSError("directory sync failed")
+                real_fsync(fd)
+
+            with patch("skill_collection._initialization_transaction.containment_capability", return_value="supported"), patch(
+                "skill_collection._initialization_transaction.directory_fsync_capability", return_value="supported"
+            ), patch("skill_collection._initialization_transaction.os.fsync", side_effect=fail_temporary_cleanup_sync):
+                result = apply_project_initialization(collection, project, "base", plan.plan_id)
+                names = sorted(item.name for item in project.iterdir())
+
+        self.assertEqual(result.status, "created_with_incomplete_cleanup")
+        self.assertEqual(result.cleanup.remaining_objects, ())
+        self.assertEqual(len(result.cleanup.removed_temporary_files), 1)
+        self.assertEqual(
+            [issue.code for issue in result.cleanup.issues],
+            ["initialization.cleanup_directory_fsync_failed"],
+        )
+        self.assertEqual(names, ["skill-collection.toml"])
 
     def test_concurrently_disappeared_owned_binding_remains_reported(self) -> None:
         with self.initialized_roots() as (collection, project, plan):
@@ -625,7 +759,9 @@ class InitializationApplyPublicSeamTests(unittest.TestCase):
                 with self.assertRaises(OSError) as raised:
                     apply_project_initialization(collection, project, "base", plan.plan_id)
 
-            self.assertEqual(list(project.iterdir()), [])
+            self.assertEqual(
+                (project / "skill-collection.toml").read_text(), plan.binding_content
+            )
             self.assertIn(
                 "initialization.cleanup_descriptor_close_failed",
                 [issue.code for issue in raised.exception.initialization_cleanup_report.issues],

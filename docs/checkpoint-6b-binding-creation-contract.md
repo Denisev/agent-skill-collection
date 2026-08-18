@@ -1,6 +1,6 @@
 # Checkpoint 6B contract: safe, exclusive Binding creation
 
-Status: **Accepted for Checkpoint 6B.**
+Status: **Accepted for Checkpoint 6B — portable POSIX protocol.**
 
 Baseline: `cfe34791f28db8c591546f20d4c4505ac6c43426`
 
@@ -24,8 +24,10 @@ opaque `plan_id` returned by a ready plan. Apply independently recreates the pla
 the supplied id is review evidence, not a capability, reservation, lock, or
 authorization to overwrite.
 
-The only successful durable effect is creation of the exact canonical file
-`project:skill-collection.toml`. Apply creates no directories, Skill links,
+The only durable Binding effect is creation of the exact canonical file
+`project:skill-collection.toml`. A normal `created` result leaves no temporary
+file; `created_with_incomplete_cleanup` may additionally retain only its reported
+invocation-owned temporary hard link. Apply creates no directories, Skill links,
 Activation Record, cache, global state, collection state, Git state, environment
 state, credential state, or network state. It has no overwrite, force, merge,
 repair, resume, adopt, update, activate, or delete mode.
@@ -33,8 +35,9 @@ repair, resume, adopt, update, activate, or delete mode.
 If `skill-collection.toml` exists in any form when publication is attempted, apply
 is blocked and leaves it untouched. Existing objects are never opened, followed,
 parsed, compared, normalized, chmodded, removed, or replaced. A failed invocation
-may best-effort remove only temporary or final objects whose identity proves that
-the same invocation created them.
+may best-effort remove only provisional temporary or final objects whose identity
+proves that the same invocation created them. Once the Binding reaches the commit
+point defined in section 7, it is never rolled back.
 
 ## 2. Vocabulary and ownership
 
@@ -46,8 +49,14 @@ from an exact, freshly revalidated Initialization Plan. It either publishes the
 complete Binding exclusively or reports that it did not complete.
 
 **Initialization Result**: The immutable outcome of one Initialization
-Application: `created`, `blocked`, or `failed`. Creation fields describe what the
-invocation observed itself create; they are not durable ownership records.
+Application: `created`, `created_with_incomplete_cleanup`, `blocked`, or
+`failed`. Creation fields describe what the invocation observed itself create;
+they are not durable ownership records.
+
+**Created with incomplete cleanup**: A successful, synchronized, verified Binding
+publication whose only incomplete post-commit work is removal of the
+invocation-owned temporary hard link. The Binding is valid and project-owned; the
+temporary location is reported for project-owner recovery.
 
 **Initialization Cleanup Report**: The deterministic account of best-effort
 removal after an Initialization Application fails or is interrupted. It is not a
@@ -67,7 +76,9 @@ required unless review changes the transaction strategy or ownership boundary.
 The following names become public exports from `skill_collection`:
 
 ```python
-InitializationApplyStatus = Literal["created", "blocked", "failed"]
+InitializationApplyStatus = Literal[
+    "created", "created_with_incomplete_cleanup", "blocked", "failed"
+]
 
 @dataclass(frozen=True, slots=True)
 class InitializationCleanupReport:
@@ -106,6 +117,15 @@ Result invariants are exact:
   `binding_location`, and `binding_digest` are non-`None`; `binding_location` is
   exactly `Location("project", "skill-collection.toml")`; `issues == ()`; and
   `cleanup is None`.
+- `created_with_incomplete_cleanup`: the supplied id matched the final plan;
+  `plan_id`, `binding_location`, and `binding_digest` have the same values and
+  locations as `created`; `issues` contains exactly
+  `initialization.temporary_cleanup_incomplete`; and `cleanup` is non-`None`,
+  attempted, and has one or more cleanup issues. When temporary removal did not
+  complete safely, it reports that rooted temporary location in
+  `remaining_objects`; when only its post-unlink directory synchronization failed,
+  `remaining_objects == ()` and `removed_temporary_files` records the removed
+  temporary location. `removed_binding` is always `False` for this state.
 - `blocked`: no creation syscall for this invocation succeeded; `plan_id`,
   `binding_location`, and `binding_digest` are `None`; one or more normalized
   issues are present; and `cleanup is None`.
@@ -268,19 +288,29 @@ The normative transaction is:
    `skill-collection.toml`. The call must have no replacement semantics and must not
    follow either name. Record the final entry's identity immediately. It must be a
    regular non-symlink file with the same identity as the temporary file.
-7. `fsync` the project directory, reopen and verify the final file read-only and
-   no-follow, and require exact identity, bytes, raw digest, and semantic Binding
-   digest.
-8. Remove only the temporary link after checking its identity, then `fsync` the
-   project directory again. Clear it from the ledger.
-9. Reverify the anchor and complete required chains, verify the final file once
-   more, close all handles successfully, and return `created`.
+7. `fsync` the project directory. Reverify the retained project descriptor, stable
+   anchor, and complete required path chains; then reopen and verify the final file
+   read-only and no-follow, requiring exact identity, bytes, raw digest, and
+   semantic Binding digest.
+8. **Commit** after all required path and Binding verification has completed and
+   the final entry has been synchronized. This successful, synchronized, verified
+   hard-link publication makes the Binding project-owned and irrevocable for this
+   invocation.
+9. Remove the temporary link after checking its identity, then `fsync` the project
+   directory again. Clear it from the ledger only after both operations succeed.
+10. Close all handles successfully, and return `created`.
 
-No successful return is allowed before the Binding's bytes and directory entry are
+After commit, apply performs no further path or Binding verification. Its only
+remaining work is temporary-link cleanup and descriptor closure.
+
+No `created` return is allowed before the Binding's bytes and directory entry are
 synchronized and the temporary link is durably removed. At no point is a partial
-Binding visible at the final name. Hard-link publication is required; `rename`,
-`replace`, pathname existence checks followed by ordinary creation, and direct
-writing of the final path are forbidden.
+Binding visible at the final name. If step 9 fails after commit, apply returns
+`created_with_incomplete_cleanup`; it retains the valid Binding and reports the
+temporary location either as remaining or as removed-but-not-durably-confirmed.
+Hard-link publication is required; `rename`, `replace`,
+pathname existence checks followed by ordinary creation, and direct writing of the
+final path are forbidden.
 
 The requested creation mode is `0o600`, subject to a stricter process `umask`.
 Final permissions may therefore be stricter, but must never contain a group or
@@ -318,6 +348,27 @@ Apply reports the state it actually observes. It does not promise to detect a
 create/remove event that leaves no observable object, lock the project against
 other tools, or make a successful Binding immutable after return.
 
+### Portable POSIX concurrency boundary
+
+This checkpoint uses a cooperative-concurrency threat model. Descriptor-relative
+`link` provides exclusive, no-overwrite Binding publication even when another
+cooperating or noncooperating process races to create the final name. Path-chain
+checks continue to protect containment exactly as specified in section 6.
+
+Portable POSIX provides no operation that atomically unlinks a directory entry
+only when it has a specified `(st_dev, st_ino)` identity. Therefore the identity
+check followed by `unlink` is permitted only for an invocation-owned provisional
+entry or temporary hard link under this explicit limitation: this checkpoint
+excludes a hostile same-authority process that replaces that exact entry in the
+final verification-to-unlink interval. Such a process has the authority to alter
+the project directory and is outside 6B's portable POSIX guarantee. A detected
+missing, type-changed, or identity-changed entry is never removed and is reported
+as remaining.
+
+Linux `O_TMPFILE` plus an appropriate descriptor-to-name publication primitive is
+a possible future hardened backend. It is not a Checkpoint 6B requirement and
+does not alter the portable result or CLI contract.
+
 ## 9. Failure and cleanup
 
 Each successful creating syscall is recorded before another fallible operation.
@@ -340,7 +391,9 @@ partial bytes never appear in public issues or output. Issue selection is by
 transaction stage and safe classification, not by disclosing the underlying
 exception.
 
-Cleanup runs in reverse publication order and only through retained descriptors:
+Before commit, cleanup runs in reverse publication order and only through retained
+descriptors. After commit, cleanup never removes `skill-collection.toml`; it may
+attempt only temporary-file removal:
 
 Before choosing the cleanup path, apply performs the full-chain reachability check
 from section 6. Its result controls reporting only: cleanup always addresses
@@ -348,11 +401,12 @@ invocation-owned objects through the retained canonical project descriptor and
 never traverses or mutates a replacement chain. A failed reachability check cannot
 prevent best-effort cleanup of objects already created by this invocation.
 
-1. If the final name is ledger-owned, `lstat` it without following, require an
-   ordinary file with the exact recorded identity, unlink that name, and `fsync`
-   the project directory.
+1. Before commit, if the final name is ledger-owned, `lstat` it without following,
+   require an ordinary file with the exact recorded identity, unlink that name, and
+   `fsync` the project directory, subject to the portable POSIX boundary in section
+   8.
 2. If the temporary name is ledger-owned, perform the same identity check, unlink
-   it, and `fsync` the directory.
+   it, and `fsync` the directory, subject to the same boundary.
 3. Never remove an entry that is missing, changed identity, changed type, or was not
    recorded by this invocation. Report such an entry in `remaining_objects`.
 4. Close retained descriptors even when removal or synchronization fails. A close
@@ -369,17 +423,35 @@ location. A temporary location is exposed as
 actually remains; the suffix is treated as opaque. Cleanup issues never replace or
 reorder the primary failure.
 
-If both hard links exist and cleanup removes only one, the other is reported. If
-the final Binding was published and synchronized but a later verification or
-temporary cleanup fails, the operation still returns failed and cleanup attempts to
-remove the final Binding: success is all-or-nothing at the API boundary.
+If both hard links exist and cleanup removes only one, the other is reported. Once
+commit has occurred, the final Binding is retained even if temporary cleanup or a
+descriptor close fails. A temporary removal or directory sync failure after commit
+returns `created_with_incomplete_cleanup`, with exactly:
+
+| Code | Message | Location |
+| --- | --- | --- |
+| `initialization.temporary_cleanup_incomplete` | `Binding creation completed, but temporary-file cleanup could not be confirmed.` | `project:.skill-collection.toml.tmp-<opaque>` |
+
+The result's cleanup report also includes the underlying cleanup issue
+(`initialization.cleanup_identity_changed`,
+`initialization.cleanup_remove_failed`, or
+`initialization.cleanup_directory_fsync_failed`) and lists that temporary rooted
+location in `remaining_objects` when removal did not complete safely. If `unlink`
+succeeded but its directory `fsync` failed, it instead records the temporary in
+`removed_temporary_files` and reports no remaining object. It does not report the
+committed Binding as remaining, removed, or recoverable.
 
 A process crash or uncatchable termination may leave a complete final Binding, a
 temporary file, or both. There is no durable transaction journal, automatic
 recovery, startup scavenging, or orphan adoption. A later run blocks on a final
 Binding. It never removes an orphan temporary file; manual project-owner review is
-required. Random names make a later collision negligible but do not establish
-ownership.
+required. For `created_with_incomplete_cleanup`, recovery is: preserve
+`skill-collection.toml`; verify its bytes and digest against the reported plan if
+desired; then inspect the cleanup report. Only when it lists a temporary location
+in `remaining_objects`, confirm that no cooperating initialization is active and
+manually inspect and remove that exact temporary location. A directory-sync issue
+with no remaining temporary object requires no manual deletion. Random names make
+a later collision negligible but do not establish ownership.
 
 ## 10. Exceptions and interruption
 
@@ -402,13 +474,13 @@ Descriptor-close behavior is stage-specific:
 - during an expected failed-result cleanup, add
   `initialization.cleanup_descriptor_close_failed` and retain the primary result
   issue; and
-- after publication, synchronization, final verification, and temporary removal
-  have otherwise completed, any descriptor close failure is an unexpected
-  exception. While sufficient retained descriptors remain, attempt the same
-  identity-checked cleanup of the published Binding, attach the cleanup report to
-  the close exception, and re-raise it. If the failing close has already made a
-  descriptor unusable, cleanup uses only other still-valid retained descriptors
-  and reports the Binding as remaining when safe removal cannot be established.
+- after commit, any descriptor close failure is an unexpected exception. While
+  sufficient retained descriptors remain, attempt only identity-checked cleanup of
+  the temporary hard link; never roll back the committed Binding. Attach the
+  cleanup report to the close exception and re-raise it. If the failing close has
+  already made a descriptor unusable, cleanup uses only other still-valid retained
+  descriptors and reports the temporary as remaining when safe removal cannot be
+  established.
 
 The last case is never returned as `created` and is never converted to an expected
 failed result. Its CLI outcome is exit `3` with sanitized system output and attached
@@ -454,10 +526,11 @@ Successful JSON is the existing deterministic envelope:
 }
 ```
 
-Blocked and failed results contain the same exact field set, with nulls and issues
-according to section 3. Cleanup uses the public fields from section 3 and the
-existing deterministic location/issue encodings. JSON remains sorted, UTF-8,
-two-space indented, and terminated by one LF.
+Blocked, failed, and `created_with_incomplete_cleanup` results contain the same
+exact field set, with nulls and issues according to section 3. Cleanup uses the
+public fields from section 3 and the existing deterministic location/issue
+encodings. JSON remains sorted, UTF-8, two-space indented, and terminated by one
+LF.
 
 Text uses the existing inspection renderer conventions and this exact layout:
 
@@ -479,11 +552,20 @@ concepts but names only Binding and temporary files. It never prints absolute pa
 exception text, descriptors, inode/device values, permissions, environment data,
 or timestamps.
 
+For `created_with_incomplete_cleanup`, text adds this exact recovery paragraph
+after the cleanup block:
+
+```text
+Recovery: Keep the Binding. Inspect the Cleanup section before removing any
+reported temporary file.
+```
+
 Streams and exits are exact:
 
 | Condition | stdout | stderr | Exit |
 | --- | --- | --- | --- |
 | Created | result | empty | `0` |
+| Created with incomplete cleanup | result | empty | `1` |
 | Blocked | result | empty | `1` |
 | Failed with cleanup result | result | empty | `1` |
 | Usage error | empty | baseline usage error | `2` |
@@ -511,6 +593,7 @@ initialization.file_fsync_failed
 initialization.directory_fsync_failed
 initialization.binding_verification_failed
 initialization.operation_failed
+initialization.temporary_cleanup_incomplete
 initialization.cleanup_identity_changed
 initialization.cleanup_remove_failed
 initialization.cleanup_directory_fsync_failed
@@ -537,8 +620,11 @@ or controlled fakes for transaction edges.
    requested mode `0o600` subject to the process `umask`; tests under representative
    restrictive masks prove that no group/other permission bit is ever present and
    that permissions are never broadened. Raw and semantic digests match the
-   reviewed plan; only the Binding remains; success JSON/text are golden and
-   deterministic.
+   reviewed plan; only the Binding remains after `created`; success JSON/text are
+   golden and deterministic. A post-commit temporary cleanup failure instead
+   produces `created_with_incomplete_cleanup`, retains both the valid Binding and
+   the reported temporary file, emits its exact issue/recovery output, and exits
+   `1`.
 4. **Root and ancestor matrix**: missing, file-valued, symlinked, replaced,
    renamed, unreadable, and identity-changed roots exercise the declared
    containment behavior. Before temporary creation, publication, cleanup decision,
@@ -559,7 +645,8 @@ or controlled fakes for transaction edges.
 7. **Race matrix**: competitors create/remove before final review, before temporary
    creation, before publication, during publication, after publication, and during
    cleanup. The test proves exclusive publication, final-observation semantics, and
-   that competitor objects are never removed.
+   that competitor objects are never removed outside the explicitly excluded
+   same-authority final verification-to-unlink interval in section 8.
 8. **Atomic visibility**: observers see no final name before publication and only
    complete verified bytes afterward. Tests reject direct final-path writes,
    `rename`, and replacement-capable operations.
@@ -578,8 +665,10 @@ or controlled fakes for transaction edges.
     cleanup.
 12. **Failure ledger and cleanup**: inject failure after every creating and
     synchronizing syscall. Snapshot the result and filesystem; only invocation-
-    owned matching identities are removed in reverse order, incomplete cleanup is
-    reported, and the primary issue is preserved.
+    owned matching identities are removed in reverse order before commit,
+    incomplete cleanup is reported, and the primary issue is preserved. After
+    commit, the Binding is never removed; temporary cleanup failure has the exact
+    created-with-incomplete-cleanup result defined in section 9.
 13. **Exception/interruption snapshots**: inject `Exception` and
     `KeyboardInterrupt` before and after each creation boundary. Assert original
     identity/traceback preservation, attached cleanup only after creation,
@@ -587,8 +676,12 @@ or controlled fakes for transaction edges.
 14. **State noninterference**: snapshot collection and project trees (including
     types, bytes, modes, links, and absence of lock/temp artifacts), Git refs,
     index, worktree, remotes/config, environment, credential-helper calls, network
-    calls, and global Skill locations. Success differs only by the Binding; block
-    differs by nothing; cleaned failure differs by nothing.
+    calls, and global Skill locations. `created` differs only by the Binding.
+    `created_with_incomplete_cleanup` either retains only its reported temporary
+    file, which appears in `remaining_objects`, or has removed that temporary file,
+    which appears in `removed_temporary_files` while directory synchronization is
+    reported as unconfirmed. Block differs by nothing; cleaned pre-commit failure
+    differs by nothing.
 15. **No orphan adoption**: pre-existing names matching the temporary pattern are
     never opened, removed, or reported as invocation-owned; collision retry is
     bounded and deterministic under a fake random source.
@@ -618,6 +711,11 @@ Checkpoint 6B does not:
   identity, Activation ownership, or existing output schema version; or
 - authorize implementation of Checkpoint 6B before this contract is independently
   reviewed and accepted.
+
+The portable protocol also does not defend against a hostile same-authority process
+that races an invocation-owned provisional entry or temporary hard link between its
+final identity verification and `unlink`. Linux-only unnamed-temporary-file
+hardening is explicitly deferred.
 
 ## 15. Approval gate
 

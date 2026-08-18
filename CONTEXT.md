@@ -50,7 +50,7 @@ One request to create the first project Binding from an exact, freshly revalidat
 _Avoid_: Activation, installation
 
 **Initialization Result**:
-The immutable outcome of one Initialization Application: created, blocked, or failed. Creation fields describe only what that invocation observed itself create and are not durable ownership records.
+The immutable outcome of one Initialization Application: created, created with incomplete cleanup, blocked, or failed. Created with incomplete cleanup means the Binding is valid and project-owned while only the invocation's temporary hard link remains for project-owner recovery. Creation fields describe only what that invocation observed itself create and are not durable ownership records.
 _Avoid_: Activation Result, ownership record
 
 **Initialization Cleanup Report**:
