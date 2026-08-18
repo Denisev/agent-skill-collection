@@ -57,6 +57,10 @@ _Avoid_: Activation Result, ownership record
 The deterministic account of best-effort removal after an Initialization Application fails or is interrupted. It is not a Rollback, repair instruction, durable journal, or ownership proof.
 _Avoid_: Rollback, recovery record
 
+**Disposable Canary**:
+A bounded, local end-to-end exercise of approved public commands against freshly created temporary collection and project roots. It is evidence for a release decision, not a deployment, production validation, migration, or repair mechanism.
+_Avoid_: Production canary, smoke test against a real project
+
 **Catalog**:
 The generated inventory of resolved Skills and their provenance, paths, and Codex-facing names at a specific collection state. It is derived data and is not hand edited.
 _Avoid_: Registry, manifest
