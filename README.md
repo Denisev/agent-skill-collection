@@ -4,13 +4,15 @@
 skills from pinned upstream sources and collection-owned skills. Projects select
 skills through committed bindings; activation is a separate, explicit operation.
 
-This repository is currently at **Checkpoint 6A: read-only project initialization
-planning**. It can preview the exact canonical Binding for a committed Collection
-URL, validated collection revision, and Profile without creating it. It also
-retains deterministic project inspection and explicit, freshly revalidated
-Activation. It contains no initialization apply mode, deactivation, installer,
-Source update, global mutation, hooks, plugins, MCP servers, or automatic update
-mechanism.
+This repository has completed **Checkpoint 6C: documentation closeout and a
+disposable local canary**. It can preview and, through an explicit reviewed-plan handshake,
+create the exact canonical Binding for a committed Collection URL, validated
+collection revision, and Profile. It also retains deterministic project inspection
+and explicit, freshly revalidated Activation. Checkpoint 6C completes the
+documentation closeout and adds a disposable local end-to-end canary; it does not
+authorize production deployment, deactivation, an installer, Source updates,
+global mutation,
+hooks, plugins, MCP servers, or automatic update mechanism.
 
 ## Design constraints
 
@@ -50,11 +52,13 @@ validation and are specified in [schemas/README.md](schemas/README.md).
 
 ## Current boundaries
 
-At this checkpoint, only an approved project-local Activation Plan may create
+Only an approved project-local Initialization Application may create the first
+Binding, and only an approved project-local Activation Application may create
 container directories, managed skill symlinks, and one canonical Activation Record.
-Nothing may deactivate, update Sources, or modify global skills. The pre-install archive at
-`/Users/admin/Documents/codex_projects/bystro/.skill-vault` remains outside this
-repository and must remain untouched until migration is explicitly approved.
+Nothing may deactivate, update Sources, modify global skills, or mutate a real
+project during the disposable canary. The pre-install archive at
+`/Users/admin/Documents/codex_projects/bystro/.skill-vault` is outside this
+repository and is never a canary input, output, or cleanup target.
 
 ## Read-only validation seam
 
