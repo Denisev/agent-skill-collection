@@ -4,15 +4,15 @@
 skills from pinned upstream sources and collection-owned skills. Projects select
 skills through committed bindings; activation is a separate, explicit operation.
 
-This repository has completed **Checkpoint 6C: documentation closeout and a
-disposable local canary**. It can preview and, through an explicit reviewed-plan handshake,
-create the exact canonical Binding for a committed Collection URL, validated
-collection revision, and Profile. It also retains deterministic project inspection
-and explicit, freshly revalidated Activation. Checkpoint 6C completes the
-documentation closeout and adds a disposable local end-to-end canary; it does not
-authorize production deployment, deactivation, an installer, Source updates,
-global mutation,
-hooks, plugins, MCP servers, or automatic update mechanism.
+This repository has completed reduced **Checkpoint 7A: Remote Candidate
+Inspection**. It can inspect anonymous HTTPS advertisements for selected Sources
+and produce deterministic, read-only ready or blocked evidence. It does not acquire
+objects, inspect candidate ancestry or content, project collection changes, update
+Source pins or the Catalog, or activate projects. The earlier Checkpoint 6C Binding,
+project-inspection, explicit Activation, documentation-closeout, and disposable
+canary capabilities remain available. No checkpoint authorizes production
+deployment, deactivation, an installer, global mutation, hooks, plugins, MCP
+servers, or an automatic update mechanism.
 
 ## Design constraints
 
@@ -81,7 +81,7 @@ PYTHONPATH=src python3 -m unittest discover -s tests
 
 ## Commands
 
-The CLI exposes deterministic read-only and Activation commands:
+The CLI exposes deterministic read-only inspection and Activation commands:
 
 ```sh
 PYTHONPATH=src python3 -m skill_collection scan [--collection-root PATH]
@@ -93,6 +93,7 @@ PYTHONPATH=src python3 -m skill_collection status [--collection-root PATH] --pro
 PYTHONPATH=src python3 -m skill_collection doctor [--collection-root PATH] --project-root PATH [--format json|text]
 PYTHONPATH=src python3 -m skill_collection init-project [--collection-root PATH] --project-root PATH --profile PROFILE [--format json|text]
 PYTHONPATH=src python3 -m skill_collection init-project [--collection-root PATH] --project-root PATH --profile PROFILE --apply --plan-id ID [--format json|text]
+PYTHONPATH=src python3 -m skill_collection inspect-source-candidates [--collection-root PATH] --source SOURCE=refs/heads/BRANCH --allow-network [--format json|text]
 ```
 
 `init-project` remains read-only by default. Its explicit `--apply --plan-id`
@@ -102,9 +103,26 @@ Skills or create any other project state.
 
 `status` maps the existing Activation Review to `blocked`, `inactive`, `active`, or
 `drifted`. `doctor` adds non-mutating inspection of the platform capabilities used
-by Activation preflight. JSON remains the default; text output is available only
-for these two inspection commands. Neither command initializes, repairs, relinks,
-deactivates, or otherwise changes either root.
+by Activation preflight. `inspect-source-candidates` is reduced Checkpoint 7A: it
+performs explicit, anonymous-HTTPS remote candidate inspection only—no object
+acquisition, local projection, pin update, Catalog change, project change, or
+Activation. JSON remains the default; `status`, `doctor`, `init-project`, and
+`inspect-source-candidates` support text output. The read-only `status`, `doctor`,
+and `inspect-source-candidates` commands never initialize, repair, relink,
+deactivate, or otherwise change either root.
+
+Checkpoint 7A verification requires both commands below. In a restricted sandbox
+the ordinary suite may skip only the loopback listener test. The same complete
+suite must then run with loopback permission and report `OK` with zero skips before
+acceptance:
+
+```sh
+# Ordinary sandboxed run.
+PYTHONPATH=src python3 -m unittest discover -s tests
+
+# Mandatory acceptance run in an environment that permits loopback listeners.
+PYTHONPATH=src python3 -m unittest discover -s tests
+```
 
 `scan` recursively discovers regular `SKILL.md` files without following directory
 symlinks and correlates them exactly by Source and Catalog path. `plan` returns an

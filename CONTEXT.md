@@ -9,6 +9,22 @@ agent skills across projects.
 A named, pinned origin that contributes zero or more Skills to the collection. A native external Source is represented by a Git submodule; the collection itself is the origin for collection-owned Skills.
 _Avoid_: Repository, upstream
 
+**Remote Source Inspection**:
+An explicitly network-authorized, read-only observation of one native Source's advertised Git reference and object identity. It does not fetch objects, authenticate, change a remote, or update a Source.
+_Avoid_: Fetch, sync, remote update
+
+**Candidate Source Revision**:
+The exact Git object identity advertised for a requested remote Source reference during Remote Source Inspection. It is a proposal, not a proven commit, new pin, or permission to mutate the submodule.
+_Avoid_: Latest version, resolved branch, updated Source
+
+**Future 7C Source Update Plan**:
+An immutable, deterministic, read-only comparison between current pinned Source revisions and explicitly inspected Candidate Source Revisions, including projected collection and project consequences. It is not an Update and authorizes no mutation.
+_Avoid_: Update, fetch plan, migration plan
+
+**Future 7C Reactivation Preview**:
+A read-only projection of how a Source Update Plan could affect one project's selected Skills and generated Activation state after a future collection revision exists. It is not an Activation Plan and cannot be applied.
+_Avoid_: Activation Plan, reactivation action
+
 **Skill**:
 A discoverable agent capability with a stable collection identity and a Codex-facing name. A Skill belongs to exactly one Source, and its valid Catalog entry must be backed by exactly one matching Discovery.
 _Avoid_: Package, plugin

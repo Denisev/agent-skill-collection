@@ -248,6 +248,10 @@ _DNS_LABEL = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
 _URI_CHARACTER = re.compile(r"^[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
 
 
+def is_identifier(value: object) -> bool:
+    return isinstance(value, str) and _IDENTIFIER.fullmatch(value) is not None
+
+
 def is_portable_collection_url(value: object) -> bool:
     if not isinstance(value, str) or not value or _URI_CHARACTER.fullmatch(value) is None:
         return False
@@ -312,7 +316,7 @@ def _valid_url_host(hostname: str, authority: str) -> bool:
 def _validate_identifier(
     value: object, root: RootName, relative_path: str, issues: list[ValidationIssue]
 ) -> bool:
-    if not isinstance(value, str) or _IDENTIFIER.fullmatch(value) is None:
+    if not is_identifier(value):
         _invalid(issues, root, relative_path)
         return False
     return True

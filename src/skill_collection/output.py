@@ -7,6 +7,7 @@ from typing import Any
 from .inspection import DoctorReport, GuidedIssue, ProjectStatus, RecommendedCommand
 from .initialization import InitializationPlan
 from ._initialization_transaction import InitializationResult
+from .source_update import InspectionIssue, InspectionLocation, RemoteCandidateInspection
 
 
 def json_document(command: str, result: object) -> str:
@@ -40,14 +41,54 @@ def _value(value: object) -> Any:
     return value
 
 
-def inspection_text(result: ProjectStatus | DoctorReport | InitializationPlan | InitializationResult) -> str:
+def inspection_text(result: ProjectStatus | DoctorReport | InitializationPlan | InitializationResult | RemoteCandidateInspection) -> str:
     if isinstance(result, InitializationResult):
         lines = _initialization_result_lines(result)
     elif isinstance(result, InitializationPlan):
         lines = _initialization_lines(result)
+    elif isinstance(result, RemoteCandidateInspection):
+        lines = _source_update_lines(result)
     else:
         lines = _doctor_lines(result) if isinstance(result, DoctorReport) else _status_lines(result)
     return "\n".join(lines) + "\n"
+
+
+def _source_update_lines(result: RemoteCandidateInspection) -> list[str]:
+    lines = [
+        f"Remote candidate inspection: {result.status}",
+        f"Inspection ID: {result.inspection_id or '-'}",
+        "",
+        f"Sources ({len(result.comparisons)}):",
+    ]
+    if result.comparisons:
+        for item in result.comparisons:
+            lines.extend([
+                f"- {item.source_id}: {item.current_revision} -> {item.candidate_revision}",
+                f"  Ref: {_escape(item.remote_ref)}",
+                f"  Relationship: {item.relationship}",
+            ])
+    else:
+        lines.append("None.")
+    lines.extend(["", f"Issues ({len(result.issues)}):"])
+    lines.extend(_source_issue_lines(result.issues) if result.issues else ["None."])
+    return lines
+
+
+def _source_location(location: InspectionLocation | None) -> str:
+    if location is None:
+        return "-"
+    label = f":{location.label}" if location.label else ""
+    return f"{location.root}{label}:{_escape(location.relative_path)}"
+
+
+def _source_issue_lines(issues: tuple[InspectionIssue, ...]) -> list[str]:
+    lines: list[str] = []
+    for index, issue in enumerate(issues, 1):
+        lines.extend([
+            f"{index}. [{_escape(issue.code)}] {_escape(issue.message)}",
+            f"   Location: {_source_location(issue.location)}",
+        ])
+    return lines
 
 
 def _initialization_result_lines(result: InitializationResult) -> list[str]:

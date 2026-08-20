@@ -53,6 +53,15 @@ from ._initialization_transaction import (
     InitializationResult,
     apply_project_initialization,
 )
+from .source_update import (
+    InspectionIssue,
+    InspectionLocation,
+    NetworkAuthorization,
+    RemoteCandidateComparison,
+    RemoteCandidateInspection,
+    RemoteCandidateRequest,
+    inspect_remote_candidates,
+)
 
 __all__ = [
     "ActivationPlan",
@@ -102,4 +111,11 @@ __all__ = [
     "doctor",
     "plan_project_initialization",
     "apply_project_initialization",
+    "InspectionIssue",
+    "InspectionLocation",
+    "NetworkAuthorization",
+    "RemoteCandidateComparison",
+    "RemoteCandidateInspection",
+    "RemoteCandidateRequest",
+    "inspect_remote_candidates",
 ]
